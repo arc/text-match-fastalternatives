@@ -14,4 +14,3 @@ t/data/README
 t/data/robots.txt
 t/data/user_agents.txt
 misc/performance.pl
-META.yml                                 Module meta-data (added by MakeMaker)
