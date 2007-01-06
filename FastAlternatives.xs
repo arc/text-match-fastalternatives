@@ -32,17 +32,21 @@ static void free_trie(struct trie_node *node) {
 
 static int trie_match(struct trie_node *node, const char *s, I32 len) {
     unsigned char c;
-    struct trie_node *next;
 
-    if (node->final)
-        return 1;
-    if (len == 0)
-        return 0;
-    c = *s;
-    if (c < 32 || c >= 127)
-        return 0;
-    next = node->next[c - 32];
-    return next ? trie_match(next, s + 1, len - 1) : 0;
+    for (;;) {
+        if (node->final)
+            return 1;
+        if (len == 0)
+            return 0;
+        c = *s;
+        if (c < 32 || c >= 127)
+            return 0;
+        node = node->next[c - 32];
+        if (!node)
+            return 0;
+        s++;
+        len--;
+    }
 }
 
 MODULE = Text::Match::FastAlternatives      PACKAGE = Text::Match::FastAlternatives
