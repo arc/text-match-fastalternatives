@@ -2,3 +2,6 @@ Revision history for Perl extension Text::Match::FastAlternatives
 
 0.01  Sun Dec 17 15:45:18 2006
 	- original version
+
+0.02  Sat Dec 23 14:05:27 2006
+	- fixed incorrect README file
