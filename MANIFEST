@@ -4,6 +4,7 @@ Changes
 MANIFEST
 Makefile.PL
 README
+TODO
 typemap
 t/01_basic.t
 t/02_large.t
