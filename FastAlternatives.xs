@@ -2,11 +2,6 @@
 #include "perl.h"
 #include "XSUB.h"
 
-/* An improvement would be to get the minimum match length of all the strings
- * being sought and verify that we have enough characters left in the target
- * string.  But in the context I'm using this, the minimum match length is 3,
- * so we'd only save two function calls per failed match. */
-
 /* Support older versions of perl. */
 #ifndef Newxz
 #define Newxz(ptr, n, type) Newz(704, ptr, n, type)
