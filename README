@@ -1,0 +1,80 @@
+NAME
+       Text::Match::FastAlternatives - efficient search for many substrings
+
+SYNOPSIS
+           use Text::Match::FastAlternatives;
+
+           my $matcher = Text::Match::FastAlternatives->new(@substrings);
+           while (my $line = <>) {
+               print if $matcher->match($line);
+           }
+
+DESCRIPTION
+       This module allows you to search for many substrings in a larger
+       string.  If you need to search for the same substrings in many larger
+       strings, it is particularly efficient.
+
+       This efficiency comes at the cost of some flexibility: the substrings
+       may not contain any control characters or non-ASCII characters.
+
+METHODS
+       Text::Match::FastAlternatives->new(@strings)
+           Constructs a matcher that can efficiently search for all of the
+           @strings in parallel.  Throws an exception if any of the strings
+           contain any control characters or non-ASCII characters.
+
+       $matcher->match($target)
+           Returns a boolean value indicating whether the $target string con
+           tains any of the substrings in $matcher.
+
+PERFORMANCE NOTES
+
+       Naive code using Perl regexes would look like this:
+
+           my $rx = join |, map { quotemeta } @substrings;
+           $rx = qr/$rx/;
+           while (my $line = <>) {
+               print if $line =~ $rx;
+           }
+
+       For some sets of substrings, an optimised version of the Perl regex can
+       be built using modules such as Regexp::Trie:
+
+           my $rx = do {
+               my $rt = Regexp::Trie->new;
+               $rt->add($_) for @substrings;
+               $rt->regexp;
+           }
+           while (my $line = <>) {
+               print if $line =~ $rx;
+           }
+
+       Text::Match::FastAlternatives can be substantially faster than either
+       of those.  In one real-world situation with 339 substrings, Regexp::
+       Trie produced a regex than ran 857% faster than the naive regex
+       (according to Benchmark), but using Text::Match::FastAlternatives ran
+       18275% faster than the naive regex, or two orders of magnitude faster
+       than Regexp::Trie's optimised regex.
+
+       Text::Match::FastAlternatives accomplishes this by using a trie inter-
+       nally.  The time to find a match at a given position in the string (or
+       determine that there is no match) is independent of the number of
+       substrings being sought; worst-case match time is linear in the length
+       of the longest substring.  Since a match must be attempted at each
+       position in the target string, total worst-case search time is O(mn)
+       where m is the length of the target string and n is the length of the
+       longest substring being sought.
+
+SEE ALSO
+       <http://en.wikipedia.org/wiki/Trie>, Regexp::Trie, Regexp::Optimizer,
+       Regexp::Assemble, perl594delta.
+
+AUTHOR
+       Aaron Crane <arc@cpan.org>
+
+COPYRIGHT
+       Copyright 2006 Aaron Crane.
+
+       This library is free software; you can redistribute it and/or modify it
+       under the terms of the Artistic License, or (at your option) under the
+       terms of the GNU General Public License version 2.

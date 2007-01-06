@@ -1,0 +1,16 @@
+lib/Text/Match/FastAlternatives.pm
+FastAlternatives.xs
+Changes
+MANIFEST
+Makefile.PL
+README
+typemap
+t/01_basic.t
+t/02_large.t
+t/98_pod.t
+t/99_pod_coverage.t
+t/data/README
+t/data/robots.txt
+t/data/user_agents.txt
+misc/performance.pl
+META.yml                                 Module meta-data (added by MakeMaker)
