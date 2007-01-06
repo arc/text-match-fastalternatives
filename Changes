@@ -5,3 +5,6 @@ Revision history for Perl extension Text::Match::FastAlternatives
 
 0.02  Sat Dec 23 14:05:27 2006
 	- fixed incorrect README file
+
+0.03  Sat Dec 23 14:22:36 2006
+	- support Perl 5.8.4 (which has no Newxz() macro)
