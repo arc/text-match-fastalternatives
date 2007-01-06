@@ -7,6 +7,11 @@
  * string.  But in the context I'm using this, the minimum match length is 3,
  * so we'd only save two function calls per failed match. */
 
+/* Support older versions of perl. */
+#ifndef Newxz
+#define Newxz(ptr, n, type) Newz(704, ptr, n, type)
+#endif
+
 #define MAX_NODES 95
 
 struct trie_node;
