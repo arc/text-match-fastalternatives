@@ -52,9 +52,10 @@ PROTOTYPES: DISABLE
 Text::Match::FastAlternatives
 new(package, ...)
     char *package
-    CODE:
+    PREINIT:
         struct trie_node *root;
         I32 i;
+    CODE:
         for (i = 1;  i < items;  i++) {
             SV *sv = ST(i);
             STRLEN pos, len;
@@ -97,12 +98,13 @@ int
 match(trie, targetsv)
     Text::Match::FastAlternatives trie
     SV *targetsv
+    PREINIT:
+        STRLEN target_len;
+        char *target;
     INIT:
         if (!SvOK(targetsv))
             croak("Target is not a defined scalar");
     CODE:
-        STRLEN target_len;
-        char *target;
         target = SvPV(targetsv, target_len);
         do {
             if (trie_match(trie, target, target_len))
