@@ -11,3 +11,6 @@ Revision history for Perl extension Text::Match::FastAlternatives
 
 0.04  Sat Jan  6 13:24:45 2007
 	- support older C compilers (C89 rather than C99)
+
+0.05  Thu Nov  1 11:39:17 2007
+	- new match_at and exact_match methods
