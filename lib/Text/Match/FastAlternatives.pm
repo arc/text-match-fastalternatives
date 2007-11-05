@@ -81,6 +81,17 @@ them contain any control characters or non-ASCII characters.
 Returns a boolean value indicating whether the $target string contains any of
 the keys in $matcher.
 
+=item $matcher->match_at($target, $pos)
+
+Returns a boolean value indicating whether the $target string contains any
+of the keys in $matcher at position $pos.  Returns false (without emitting
+any warning) if $pos is larger than the length of $string.
+
+=item $matcher->exact_match($target)
+
+Returns a boolean value indicating whether the $target string is exactly
+equal to any of the keys in $matcher.
+
 =back
 
 =head1 CAVEATS
@@ -110,6 +121,9 @@ match must be attempted at each position in the target string, total worst-case
 search time is O(I<mn>) where I<m> is the length of the target string and I<n>
 is the length of the longest key.
 
+The C<match_at> and C<exact_match> methods only need to find a match at one
+position, so they have worst-case running time of O(min(I<n>, I<m>)).
+
 =head1 SEE ALSO
 
 L<http://en.wikipedia.org/wiki/Trie>, L<Regexp::Trie>, L<Regexp::Optimizer>,
@@ -121,7 +135,7 @@ Aaron Crane E<lt>arc@cpan.orgE<gt>
 
 =head1 COPYRIGHT
 
-Copyright 2006 Aaron Crane.
+Copyright 2006, 2007 Aaron Crane.
 
 This library is free software; you can redistribute it and/or modify it under
 the terms of the Artistic License, or (at your option) under the terms of the

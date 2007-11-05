@@ -17,7 +17,8 @@ struct trie_node {
 
 typedef struct trie_node *Text__Match__FastAlternatives;
 
-static void free_trie(struct trie_node *node) {
+static void
+free_trie(struct trie_node *node) {
     unsigned int i;
     for (i = 0;  i < MAX_NODES;  i++)
         if (node->next[i])
@@ -25,7 +26,8 @@ static void free_trie(struct trie_node *node) {
     Safefree(node);
 }
 
-static int trie_match(struct trie_node *node, const char *s, I32 len) {
+static int
+trie_match(struct trie_node *node, const char *s, STRLEN len) {
     unsigned char c;
 
     for (;;) {
@@ -33,6 +35,24 @@ static int trie_match(struct trie_node *node, const char *s, I32 len) {
             return 1;
         if (len == 0)
             return 0;
+        c = *s;
+        if (c < 32 || c >= 127)
+            return 0;
+        node = node->next[c - 32];
+        if (!node)
+            return 0;
+        s++;
+        len--;
+    }
+}
+
+static int
+trie_match_exact(struct trie_node *node, const char *s, STRLEN len) {
+    unsigned char c;
+
+    for (;;) {
+        if (len == 0)
+            return node->final;
         c = *s;
         if (c < 32 || c >= 127)
             return 0;
@@ -87,7 +107,7 @@ new(package, ...)
     OUTPUT:
     RETVAL
 
-void 
+void
 DESTROY(trie)
     Text::Match::FastAlternatives trie
     CODE:
@@ -110,4 +130,41 @@ match(trie, targetsv)
                 XSRETURN_YES;
             target++;
         } while (target_len-- > 0);
+        XSRETURN_NO;
+
+int
+match_at(trie, targetsv, pos)
+    Text::Match::FastAlternatives trie
+    SV *targetsv
+    int pos
+    PREINIT:
+        STRLEN target_len;
+        char *target;
+    INIT:
+        if (!SvOK(targetsv))
+            croak("Target is not a defined scalar");
+    CODE:
+        target = SvPV(targetsv, target_len);
+        if (pos <= target_len) {
+            target_len -= pos;
+            target += pos;
+            if (trie_match(trie, target, target_len))
+                XSRETURN_YES;
+        }
+        XSRETURN_NO;
+
+int
+exact_match(trie, targetsv)
+    Text::Match::FastAlternatives trie
+    SV *targetsv
+    PREINIT:
+        STRLEN target_len;
+        char *target;
+    INIT:
+        if (!SvOK(targetsv))
+            croak("Target is not a defined scalar");
+    CODE:
+        target = SvPV(targetsv, target_len);
+        if (trie_match_exact(trie, target, target_len))
+            XSRETURN_YES;
         XSRETURN_NO;

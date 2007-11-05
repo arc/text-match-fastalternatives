@@ -2,9 +2,6 @@ These are potential changes to Text::Match::FastAlternatives.  If you need any
 of them, let me know; T::M::FA currently meets my needs, so I'm unlikely to
 change it if there seems to be no other interest in it.
 
-- Add a "match at position" method (asymptotically faster than searching for a
-  match, because it never advances through the string)
-
 - Provide a way of finding which key was found, and its start position in the
   string
 
