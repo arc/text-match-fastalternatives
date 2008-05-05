@@ -61,10 +61,18 @@ Modules like Regexp::Trie can build an optimised version of such a regex,
 designed to take advantage of the niceties of perl's regex engine.  With a
 large number of keys, this module will substantially outperform even an
 optimised regex like that.  In one real-world situation with 339 keys,
-Regexp::Trie produced a regex that ran 857% faster than the naive regex
-(according to L<Benchmark>), but using Text::Match::FastAlternatives ran 18275%
-faster than the naive regex, or twenty times faster than Regexp::Trie's
-optimised regex.
+running on Perl 5.8, Regexp::Trie produced a regex that ran 857% faster than
+the naive regex (according to L<Benchmark>), but using
+Text::Match::FastAlternatives ran 18275% faster than the naive regex, or
+twenty times faster than Regexp::Trie's optimised regex.
+
+The enhancements to the regex engine in Perl 5.10 include algorithms similar
+to those in Text::Match::FastAlternatives.  However, even with very small
+sets of keys, Perl has to do extra work to be fully general, so
+Text::Match::FastAlternatives is still faster.  The difference is greater
+for larger sets of keys.  For one test with only 5 keys,
+Text::Match::FastAlternatives was 21% faster than perl-5.10.0; with 339 keys
+(as before), the difference was 111% (that is, slightly over twice as fast).
 
 =head1 METHODS
 
@@ -102,15 +110,6 @@ Text::Match::FastAlternatives has a C<DESTROY> method implemented in XS.  If
 you write a subclass with its own destructor, you will need to invoke the base
 destructor, or you will leak memory.
 
-=head2 Perl 5.10
-
-Perl 5.10 will contain many enhancements to the regex engine, including
-built-in optimisations for regexes with many branches that contain only literal
-strings.  I suspect that, for the cases where Text::Match::FastAlternatives is
-currently very fast, it will also be faster than Perl 5.10's regex engine.  But
-I may be wrong; if you're using Perl 5.9.4 or newer, you'd be well advised to
-compare the available options on data sets you're likely to use in practice.
-
 =head1 IMPLEMENTATION
 
 Text::Match::FastAlternatives manages to be so fast by using a trie internally.
@@ -127,7 +126,7 @@ position, so they have worst-case running time of O(min(I<n>, I<m>)).
 =head1 SEE ALSO
 
 L<http://en.wikipedia.org/wiki/Trie>, L<Regexp::Trie>, L<Regexp::Optimizer>,
-L<Regexp::Assemble>, L<perl594delta>.
+L<Regexp::Assemble>, L<perl5100delta>.
 
 =head1 AUTHOR
 
@@ -135,7 +134,7 @@ Aaron Crane E<lt>arc@cpan.orgE<gt>
 
 =head1 COPYRIGHT
 
-Copyright 2006, 2007 Aaron Crane.
+Copyright 2006, 2007, 2008 Aaron Crane.
 
 This library is free software; you can redistribute it and/or modify it under
 the terms of the Artistic License, or (at your option) under the terms of the
