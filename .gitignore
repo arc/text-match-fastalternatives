@@ -1,0 +1,7 @@
+/Makefile
+/Makefile.old
+*.bs
+*.o
+/FastAlternatives.c
+/blib
+/pm_to_blib
