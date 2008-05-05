@@ -8,6 +8,8 @@ TODO
 typemap
 t/01_basic.t
 t/02_large.t
+t/03_exact.t
+t/04_at.t
 t/98_pod.t
 t/99_pod_coverage.t
 t/data/README
