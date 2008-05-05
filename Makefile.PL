@@ -1,4 +1,5 @@
 use ExtUtils::MakeMaker;
+use 5.006;
 my $module_file = 'lib/Text/Match/FastAlternatives.pm';
 WriteMakefile(
     NAME          => 'Text::Match::FastAlternatives',
