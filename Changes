@@ -14,3 +14,9 @@ Revision history for Perl extension Text::Match::FastAlternatives
 
 0.05  Thu Nov  1 11:39:17 2007
 	- new match_at and exact_match methods
+
+1.00  Mon May  5 12:14:45 2008
+	- declare dependency on Perl 5.6
+	- update documentation for Perl 5.10
+	- label this release as 1.00; the code has been stable for ages
+	- if you're already using 0.04 or 0.05, there's no need to upgrade
