@@ -52,6 +52,21 @@ find_next_node(const struct trie_node *node, unsigned int c) {
 #endif
 }
 
+static void
+trie_dump(const char *prev, I32 prev_len, struct trie_node *node) {
+    unsigned int i;
+    printf("[%s]: %u\n", prev, node->entries);
+    char *state;
+    Newxz(state, prev_len + 2, char);
+    strcpy(state, prev);
+    for (i = 0;  i < node->entries;  i++) {
+        char c = node->map[i].codepoint;
+        state[prev_len] = c == ' ' ? '_' : c;
+        trie_dump(state, prev_len + 1, node->map[i].next);
+    }
+    Safefree(state);
+}
+
 static int
 compare_map_entries(const void *a, const void *b) {
     const struct map_entry *entry_a = a;
@@ -250,3 +265,9 @@ exact_match(trie, targetsv)
         if (trie_match_exact(trie, target, target_len))
             XSRETURN_YES;
         XSRETURN_NO;
+
+void
+dump(trie)
+    Text::Match::FastAlternatives trie
+    CODE:
+        trie_dump("", 0, trie);
