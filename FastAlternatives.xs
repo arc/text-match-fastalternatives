@@ -21,13 +21,20 @@ struct map_entry {
 struct trie_node {
     unsigned final   : 1;
     unsigned entries : 31;
-    struct map_entry map[1]; /* actually a variable-length array */
+    struct map_entry *map;      /* pointer to variable-length array */
 };
 
 typedef struct trie_node *Text__Match__FastAlternatives;
 
 static struct trie_node *
 find_next_node(const struct trie_node *node, unsigned int c) {
+#if 1
+    unsigned int i;
+    for (i = 0;  i < node->entries;  i++)
+        if (node->map[i].codepoint == c)
+            return node->map[i].next;
+    return 0;
+#else
     unsigned lo = 0;
     unsigned hi = node->entries; /* hi < 2**31 (because of entries bitfield) */
     while (lo < hi) {
@@ -42,6 +49,7 @@ find_next_node(const struct trie_node *node, unsigned int c) {
         return node->map[lo].next;
     else
         return 0;
+#endif
 }
 
 static int
@@ -50,20 +58,28 @@ compare_map_entries(const void *a, const void *b) {
     const struct map_entry *entry_b = b;
     int codepoint_a = (int) entry_a->codepoint;
     int codepoint_b = (int) entry_b->codepoint;
-    return codepoint_b - codepoint_a;
+    return codepoint_a - codepoint_b;
 }
 
-/* Add a link from NODE with codepoint C to NEXT; return replacement NODE */
+/* Ensure NODE has a next node with codepoint C; return it */
 static struct trie_node *
-add_next_node(struct trie_node *node, unsigned int c, struct trie_node *next) {
-    int new_size = sizeof(struct trie_node)
-        + node->entries * sizeof(struct map_entry);
-    Renewc(node, new_size, char, struct trie_node);
-    node->map[ node->entries ].next = 0;
+add_next_node(struct trie_node *node, unsigned int c) {
+    struct trie_node *next = find_next_node(node, c);
+    if (next)
+        return next;
+
+    /* Create the new NEXT */
+    Newxz(next, 1, struct trie_node);
+
+    /* Hook it into NODE */
+    Renew(node->map, node->entries + 1, struct map_entry);
+    node->map[ node->entries ].next = next;
     node->map[ node->entries ].codepoint = c;
     node->entries++;
     /* XXX: this is asymptotically slow */
     qsort(node->map, node->entries, sizeof node->map[0], compare_map_entries);
+
+    return next;
 }
 
 static void
@@ -71,6 +87,8 @@ free_trie(struct trie_node *node) {
     unsigned int i;
     for (i = 0;  i < node->entries;  i++)
         free_trie(node->map[i].next);
+    if (node->map)
+        Safefree(node->map);
     Safefree(node);
 }
 
@@ -155,16 +173,11 @@ new(package, ...)
             char *s = SvPVutf8(sv, len);
             struct trie_node *node = root;
 
-            for (;;) {
+            while (len > 0) {
                 unsigned c = utf8_to_uvuni(s, &char_length);
-                /* XXX: add it here */
-
-
-            for (pos = 0;  pos < len;  pos++) {
-                unsigned char c = s[pos] - 32;
-                if (!node->next[c])
-                    Newxz(node->next[c], 1, struct trie_node);
-                node = node->next[c];
+                node = add_next_node(node, c);
+                s += char_length;
+                len -= char_length;
             }
             node->final = 1;
         }
@@ -184,18 +197,22 @@ match(trie, targetsv)
     SV *targetsv
     PREINIT:
         STRLEN target_len;
+        STRLEN char_len = -1;
         char *target;
     INIT:
         if (!SvOK(targetsv))
             croak("Target is not a defined scalar");
     CODE:
-        target = SvPV(targetsv, target_len);
-        do {
+        target = SvPVutf8(targetsv, target_len);
+        for (;;) {
+            unsigned c = utf8_to_uvuni(target, &char_len);
             if (trie_match(trie, target, target_len))
                 XSRETURN_YES;
-            target++;
-        } while (target_len-- > 0);
-        XSRETURN_NO;
+            if (target_len == 0)
+                XSRETURN_NO;
+            target += char_len;
+            target_len -= char_len;
+        }
 
 int
 match_at(trie, targetsv, pos)
@@ -209,7 +226,7 @@ match_at(trie, targetsv, pos)
         if (!SvOK(targetsv))
             croak("Target is not a defined scalar");
     CODE:
-        target = SvPV(targetsv, target_len);
+        target = SvPVutf8(targetsv, target_len);
         if (pos <= target_len) {
             target_len -= pos;
             target += pos;
@@ -229,7 +246,7 @@ exact_match(trie, targetsv)
         if (!SvOK(targetsv))
             croak("Target is not a defined scalar");
     CODE:
-        target = SvPV(targetsv, target_len);
+        target = SvPVutf8(targetsv, target_len);
         if (trie_match_exact(trie, target, target_len))
             XSRETURN_YES;
         XSRETURN_NO;
