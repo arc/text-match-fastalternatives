@@ -3,7 +3,7 @@
 use strict;
 use warnings;
 
-use Test::More tests => 59;
+use Test::More tests => 50;
 
 use_ok('Text::Match::FastAlternatives');
 
@@ -44,8 +44,6 @@ ok($@, 'constructor dies on undef');
 
 my $foobar_tmfa = Text::Match::FastAlternatives->new('foobar');
 for (0x00, 0x0A, 0x1F, 0x7F, 0x80, 0xA0, 0xFF, 0x100, 0x200) {
-    eval { Text::Match::FastAlternatives->new(chr $_) };
-    ok($@, "constructor dies on character $_");
     ok($empty_tmfa->match(chr $_), "character $_ contains empty string");
     ok(!$null_tmfa->match(chr $_), "character $_ doesn't contain null matcher");
     ok(!$foobar_tmfa->match(chr $_), "character $_ doesn't contain foobar");
