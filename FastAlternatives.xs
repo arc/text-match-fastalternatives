@@ -22,6 +22,8 @@ struct trie_node {
     struct map_entry *map;      /* pointer to variable-length array */
 };
 
+#define NTH_ENTRY(node, n) ((node)->map[n])
+
 typedef struct trie_node *Text__Match__FastAlternatives;
 
 static struct trie_node *
@@ -31,13 +33,13 @@ find_next_node(const struct trie_node *node, unsigned int c) {
     while (lo < hi) {
         /* hi < 2**31 && lo < hi, so lo+hi cannot overflow */
         unsigned mid = (lo + hi) >> 1;
-        if (node->map[mid].codepoint < c)
+        if (NTH_ENTRY(node, mid).codepoint < c)
             lo = mid + 1;
         else
             hi = mid;
     }
-    if (lo < node->entries && node->map[lo].codepoint == c)
-        return node->map[lo].next;
+    if (lo < node->entries && NTH_ENTRY(node, lo).codepoint == c)
+        return NTH_ENTRY(node, lo).next;
     else
         return 0;
 }
@@ -50,8 +52,8 @@ trie_dump(const char *prev, I32 prev_len, struct trie_node *node) {
     Newxz(state, prev_len + 7, char);
     strcpy(state, prev);
     for (i = 0;  i < node->entries;  i++) {
-        int n = sprintf(state + prev_len, "%lc", node->map[i].codepoint);
-        trie_dump(state, prev_len + n, node->map[i].next);
+        int n = sprintf(state + prev_len, "%lc", NTH_ENTRY(node, i).codepoint);
+        trie_dump(state, prev_len + n, NTH_ENTRY(node, i).next);
     }
     Safefree(state);
 }
@@ -77,11 +79,11 @@ add_next_node(struct trie_node *node, unsigned int c) {
 
     /* Hook it into NODE */
     Renew(node->map, node->entries + 1, struct map_entry);
-    node->map[ node->entries ].next = next;
-    node->map[ node->entries ].codepoint = c;
+    NTH_ENTRY(node, node->entries).next = next;
+    NTH_ENTRY(node, node->entries).codepoint = c;
     node->entries++;
     /* XXX: this is asymptotically slow */
-    qsort(node->map, node->entries, sizeof node->map[0], compare_map_entries);
+    qsort(node->map, node->entries, sizeof NTH_ENTRY(node, 0), compare_map_entries);
 
     return next;
 }
@@ -90,7 +92,7 @@ static void
 free_trie(struct trie_node *node) {
     unsigned int i;
     for (i = 0;  i < node->entries;  i++)
-        free_trie(node->map[i].next);
+        free_trie(NTH_ENTRY(node, i).next);
     if (node->map)
         Safefree(node->map);
     Safefree(node);
