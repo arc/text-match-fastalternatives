@@ -9,198 +9,50 @@
 #define Newxz(ptr, n, type) Newz(704, ptr, n, type)
 #endif
 
+#define MAX_NODES 256
+
 struct trie_node;
-
-struct map_entry {
-    unsigned int codepoint;
-    struct trie_node *next;
-};
-
 struct trie_node {
-    unsigned final   : 1;
-    unsigned entries : 31;
-    struct map_entry *map;      /* pointer to variable-length array */
+    int final;
+    struct trie_node *next[MAX_NODES];
 };
-
-#define NTH_ENTRY(node, n) ((node)->map[n])
 
 typedef struct trie_node *Text__Match__FastAlternatives;
-
-static struct trie_node *
-find_next_node(const struct trie_node *node, unsigned int c) {
-    unsigned lo = 0;
-    unsigned hi = node->entries; /* hi < 2**31 (because of entries bitfield) */
-    while (lo < hi) {
-        /* hi < 2**31 && lo < hi, so lo+hi cannot overflow */
-        unsigned mid = (lo + hi) >> 1;
-        if (NTH_ENTRY(node, mid).codepoint < c)
-            lo = mid + 1;
-        else
-            hi = mid;
-    }
-    if (lo < node->entries && NTH_ENTRY(node, lo).codepoint == c)
-        return NTH_ENTRY(node, lo).next;
-    else
-        return 0;
-}
-
-static void
-trie_dump(const char *prev, I32 prev_len, struct trie_node *node) {
-    unsigned int i;
-    fprintf(stderr, "[%s]: %u\n", prev, node->entries);
-    char *state;
-    Newxz(state, prev_len + 7, char);
-    strcpy(state, prev);
-    for (i = 0;  i < node->entries;  i++) {
-        int n = sprintf(state + prev_len, "%lc", NTH_ENTRY(node, i).codepoint);
-        trie_dump(state, prev_len + n, NTH_ENTRY(node, i).next);
-    }
-    Safefree(state);
-}
-
-static int
-compare_map_entries(const void *a, const void *b) {
-    const struct map_entry *entry_a = a;
-    const struct map_entry *entry_b = b;
-    int codepoint_a = (int) entry_a->codepoint;
-    int codepoint_b = (int) entry_b->codepoint;
-    return codepoint_a - codepoint_b;
-}
-
-/* Return a new node just like NODE except that it's guaranteed to have a
- * slot for codepoint C.  The old NODE will be reallocated to the new one
- * (so it might be just the same old node). */
-static struct trie_node *
-realloc_with_codepoint(struct trie_node *node, unsigned int c) {
-    struct trie_node *replacement, *next;
-
-    /* To ensure that the replace-me dance works correctly, always
-     * reallocate the node, and throw away the original. */
-    Newx(replacement, 1, struct trie_node);
-    *replacement = *node;
-    Safefree(node);
-    node = replacement;
-
-    if (find_next_node(node, c))
-        return node;
-
-    /* Create the new NEXT */
-    Newxz(next, 1, struct trie_node);
-
-    /* Hook it into NODE */
-    Renew(node->map, node->entries + 1, struct map_entry);
-    NTH_ENTRY(node, node->entries).next = next;
-    NTH_ENTRY(node, node->entries).codepoint = c;
-    node->entries++;
-    /* XXX: this is asymptotically slow */
-    qsort(node->map, node->entries, sizeof next, compare_map_entries);
-
-    return node;
-}
 
 static void
 free_trie(struct trie_node *node) {
     unsigned int i;
-    for (i = 0;  i < node->entries;  i++)
-        free_trie(NTH_ENTRY(node, i).next);
-    if (node->map)
-        Safefree(node->map);
+    for (i = 0;  i < MAX_NODES;  i++)
+        if (node->next[i])
+            free_trie(node->next[i]);
     Safefree(node);
 }
 
-static STRLEN
-utf8_char_len(const char *input) {
-    const unsigned char *s = input;
-    return s[0] < 0x80 ? 1
-         : s[0] < 0xE0 ? 2
-         : s[0] < 0xF0 ? 3
-         : s[0] < 0xF8 ? 4
-         : s[0] < 0xFc ? 5
-         :               6;
-}
-
 static int
-extract_utf8(const char *input, STRLEN *bytes) {
-    const unsigned char *s = input;
-    if (s[0] < 0x80) {
-        *bytes = 1;
-        return s[0];
-    }
-    else if (s[0] < 0xE0) {
-        *bytes = 2;
-        return ((s[0] & 0x1F) << 6) | (s[1] & 0x3F);
-    }
-    else if (s[0] < 0xF0) {
-        *bytes = 3;
-        return ((s[0] & 0x0F) << 12)
-             | ((s[1] & 0x3F) << 6)
-             | ((s[2] & 0x3F));
-    }
-    else if (s[0] < 0xF8) {
-        *bytes = 4;
-        return ((s[0] & 0x07) << 18)
-             | ((s[1] & 0x3F) << 12)
-             | ((s[2] & 0x3F) <<  6)
-             | ((s[3] & 0x3F));
-    }
-    else if (s[0] < 0xFC) {
-        *bytes = 5;
-        return ((s[0] & 0x03) << 24)
-             | ((s[1] & 0x3F) << 18)
-             | ((s[2] & 0x3F) << 12)
-             | ((s[3] & 0x3F) <<  6)
-             | ((s[4] & 0x3F));
-    }
-    else {
-        *bytes = 6;
-        return ((s[0] & 0x01) << 30)
-             | ((s[1] & 0x3F) << 24)
-             | ((s[2] & 0x3F) << 18)
-             | ((s[3] & 0x3F) << 12)
-             | ((s[4] & 0x3F) <<  6)
-             | ((s[5] & 0x3F));
-    }
-}
-
-static int
-trie_match(struct trie_node *node, U8 *s, STRLEN len) {
-    UV c;
-    STRLEN char_length = -1;
-
+trie_match(struct trie_node *node, const U8 *s, STRLEN len) {
     for (;;) {
         if (node->final)
             return 1;
         if (len == 0)
             return 0;
-
-        c = extract_utf8(s, &char_length);
-
-        node = find_next_node(node, c);
+        node = node->next[*s];
         if (!node)
             return 0;
-
-        s += char_length;
-        len -= char_length;
+        s++;
+        len--;
     }
 }
 
 static int
-trie_match_exact(struct trie_node *node, U8 *s, STRLEN len) {
-    UV c;
-    STRLEN char_length = -1;
-
+trie_match_exact(struct trie_node *node, const U8 *s, STRLEN len) {
     for (;;) {
         if (len == 0)
             return node->final;
-
-        c = extract_utf8(s, &char_length);
-
-        node = find_next_node(node, c);
+        node = node->next[*s];
         if (!node)
             return 0;
-
-        s += char_length;
-        len -= char_length;
+        s++;
+        len--;
     }
 }
 
@@ -216,58 +68,24 @@ new(package, ...)
         I32 i;
     CODE:
         for (i = 1;  i < items;  i++) {
-            STRLEN len;
-            STRLEN char_length = -1;
             SV *sv = ST(i);
-            char *s;
+            STRLEN pos, len;
             if (!SvOK(sv))
                 croak("Undefined element in Text::Match::FastAlternatives->new");
-            s = SvPVutf8(sv, len);
-            while (len > 0) {
-                unsigned c = utf8_to_uvuni(s, &char_length);
-                if (char_length == -1)
-                    croak("Invalid UTF-8 in Text::Match::FastAlternatives string");
-                s += char_length;
-                len -= char_length;
-            }
         }
         Newxz(root, 1, struct trie_node);
         for (i = 1;  i < items;  i++) {
-            STRLEN len, j;
-            STRLEN char_length = -1;
+            STRLEN pos, len;
             SV *sv = ST(i);
             char *s = SvPVutf8(sv, len);
-            struct trie_node *curr = root, *parent = 0;
-
-            while (len > 0) {
-                unsigned c = utf8_to_uvuni(s, &char_length);
-                struct trie_node *node = realloc_with_codepoint(curr, c);
-
-                /* Take whatever pointed to CURR, and replace its CURR
-                 * pointer with NODE. */
-                if (!parent) {
-                    root = node;
-                }
-                else {
-                    for (j = 0;  j < parent->entries;  j++) {
-                        if (NTH_ENTRY(parent, j).next == curr) {
-                            NTH_ENTRY(parent, j).next = node;
-                            break;
-                        }
-                    }
-                }
-
-                /* Update loop-control variables */
-                s += char_length;
-                len -= char_length;
-                parent = node;
-                fprintf(stderr, "look for %c in %p\n", c, node);
-                trie_dump("", 0, node);
-
-                curr = find_next_node(node, c);
+            struct trie_node *node = root;
+            for (pos = 0;  pos < len;  pos++) {
+                unsigned char c = s[pos];
+                if (!node->next[c])
+                    Newxz(node->next[c], 1, struct trie_node);
+                node = node->next[c];
             }
-
-            curr->final = 1;
+            node->final = 1;
         }
     RETVAL = root;
     OUTPUT:
@@ -285,22 +103,18 @@ match(trie, targetsv)
     SV *targetsv
     PREINIT:
         STRLEN target_len;
-        STRLEN char_len = -1;
         char *target;
     INIT:
         if (!SvOK(targetsv))
             croak("Target is not a defined scalar");
     CODE:
         target = SvPVutf8(targetsv, target_len);
-        for (;;) {
+        do {
             if (trie_match(trie, target, target_len))
                 XSRETURN_YES;
-            if (target_len == 0)
-                XSRETURN_NO;
-            char_len = utf8_char_len(target);
-            target += char_len;
-            target_len -= char_len;
-        }
+            target++;
+        } while (target_len-- > 0);
+        XSRETURN_NO;
 
 int
 match_at(trie, targetsv, pos)
@@ -334,13 +148,7 @@ exact_match(trie, targetsv)
         if (!SvOK(targetsv))
             croak("Target is not a defined scalar");
     CODE:
-        target = SvPVutf8(targetsv, target_len);
+        target = SvPV(targetsv, target_len);
         if (trie_match_exact(trie, target, target_len))
             XSRETURN_YES;
         XSRETURN_NO;
-
-void
-dump(trie)
-    Text::Match::FastAlternatives trie
-    CODE:
-        trie_dump("", 0, trie);
