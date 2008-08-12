@@ -28,13 +28,6 @@ typedef struct trie_node *Text__Match__FastAlternatives;
 
 static struct trie_node *
 find_next_node(const struct trie_node *node, unsigned int c) {
-#if 1
-    unsigned int i;
-    for (i = 0;  i < node->entries;  i++)
-        if (node->map[i].codepoint == c)
-            return node->map[i].next;
-    return 0;
-#else
     unsigned lo = 0;
     unsigned hi = node->entries; /* hi < 2**31 (because of entries bitfield) */
     while (lo < hi) {
@@ -49,7 +42,6 @@ find_next_node(const struct trie_node *node, unsigned int c) {
         return node->map[lo].next;
     else
         return 0;
-#endif
 }
 
 static void
