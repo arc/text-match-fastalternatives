@@ -9,8 +9,6 @@
 #define Newxz(ptr, n, type) Newz(704, ptr, n, type)
 #endif
 
-#define MAX_NODES 95
-
 struct trie_node;
 
 struct map_entry {
