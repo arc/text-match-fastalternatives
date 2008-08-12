@@ -57,12 +57,11 @@ trie_dump(const char *prev, I32 prev_len, struct trie_node *node) {
     unsigned int i;
     printf("[%s]: %u\n", prev, node->entries);
     char *state;
-    Newxz(state, prev_len + 2, char);
+    Newxz(state, prev_len + 7, char);
     strcpy(state, prev);
     for (i = 0;  i < node->entries;  i++) {
-        char c = node->map[i].codepoint;
-        state[prev_len] = c == ' ' ? '_' : c;
-        trie_dump(state, prev_len + 1, node->map[i].next);
+        int n = sprintf(state + prev_len, "%lc", node->map[i].codepoint);
+        trie_dump(state, prev_len + n, node->map[i].next);
     }
     Safefree(state);
 }
