@@ -96,6 +96,60 @@ free_trie(struct trie_node *node) {
     Safefree(node);
 }
 
+static STRLEN
+utf8_char_len(const char *input) {
+    const unsigned char *s = input;
+    return s[0] < 0x80 ? 1
+         : s[0] < 0xE0 ? 2
+         : s[0] < 0xF0 ? 3
+         : s[0] < 0xF8 ? 4
+         : s[0] < 0xFc ? 5
+         :               6;
+}
+
+static int
+extract_utf8(const char *input, STRLEN *bytes) {
+    const unsigned char *s = input;
+    if (s[0] < 0x80) {
+        *bytes = 1;
+        return s[0];
+    }
+    else if (s[0] < 0xE0) {
+        *bytes = 2;
+        return ((s[0] & 0x1F) << 6) | (s[1] & 0x3F);
+    }
+    else if (s[0] < 0xF0) {
+        *bytes = 3;
+        return ((s[0] & 0x0F) << 12)
+             | ((s[1] & 0x3F) << 6)
+             | ((s[2] & 0x3F));
+    }
+    else if (s[0] < 0xF8) {
+        *bytes = 4;
+        return ((s[0] & 0x07) << 18)
+             | ((s[1] & 0x3F) << 12)
+             | ((s[2] & 0x3F) <<  6)
+             | ((s[3] & 0x3F));
+    }
+    else if (s[0] < 0xFC) {
+        *bytes = 5;
+        return ((s[0] & 0x03) << 24)
+             | ((s[1] & 0x3F) << 18)
+             | ((s[2] & 0x3F) << 12)
+             | ((s[3] & 0x3F) <<  6)
+             | ((s[4] & 0x3F));
+    }
+    else {
+        *bytes = 6;
+        return ((s[0] & 0x01) << 30)
+             | ((s[1] & 0x3F) << 24)
+             | ((s[2] & 0x3F) << 18)
+             | ((s[3] & 0x3F) << 12)
+             | ((s[4] & 0x3F) <<  6)
+             | ((s[5] & 0x3F));
+    }
+}
+
 static int
 trie_match(struct trie_node *node, U8 *s, STRLEN len) {
     UV c;
@@ -107,9 +161,7 @@ trie_match(struct trie_node *node, U8 *s, STRLEN len) {
         if (len == 0)
             return 0;
 
-        c = utf8_to_uvuni(s, &char_length);
-        if (char_length == -1)
-            croak("Invalid UTF-8");
+        c = extract_utf8(s, &char_length);
 
         node = find_next_node(node, c);
         if (!node)
@@ -129,9 +181,7 @@ trie_match_exact(struct trie_node *node, U8 *s, STRLEN len) {
         if (len == 0)
             return node->final;
 
-        c = utf8_to_uvuni(s, &char_length);
-        if (char_length == -1)
-            croak("Invalid UTF-8");
+        c = extract_utf8(s, &char_length);
 
         node = find_next_node(node, c);
         if (!node)
@@ -209,11 +259,11 @@ match(trie, targetsv)
     CODE:
         target = SvPVutf8(targetsv, target_len);
         for (;;) {
-            unsigned c = utf8_to_uvuni(target, &char_len);
             if (trie_match(trie, target, target_len))
                 XSRETURN_YES;
             if (target_len == 0)
                 XSRETURN_NO;
+            char_len = utf8_char_len(target);
             target += char_len;
             target_len -= char_len;
         }
