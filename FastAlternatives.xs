@@ -47,7 +47,7 @@ find_next_node(const struct trie_node *node, unsigned int c) {
 static void
 trie_dump(const char *prev, I32 prev_len, struct trie_node *node) {
     unsigned int i;
-    printf("[%s]: %u\n", prev, node->entries);
+    fprintf(stderr, "[%s]: %u\n", prev, node->entries);
     char *state;
     Newxz(state, prev_len + 7, char);
     strcpy(state, prev);
@@ -67,12 +67,22 @@ compare_map_entries(const void *a, const void *b) {
     return codepoint_a - codepoint_b;
 }
 
-/* Ensure NODE has a next node with codepoint C; return it */
+/* Return a new node just like NODE except that it's guaranteed to have a
+ * slot for codepoint C.  The old NODE will be reallocated to the new one
+ * (so it might be just the same old node). */
 static struct trie_node *
-add_next_node(struct trie_node *node, unsigned int c) {
-    struct trie_node *next = find_next_node(node, c);
-    if (next)
-        return next;
+realloc_with_codepoint(struct trie_node *node, unsigned int c) {
+    struct trie_node *replacement, *next;
+
+    /* To ensure that the replace-me dance works correctly, always
+     * reallocate the node, and throw away the original. */
+    Newx(replacement, 1, struct trie_node);
+    *replacement = *node;
+    Safefree(node);
+    node = replacement;
+
+    if (find_next_node(node, c))
+        return node;
 
     /* Create the new NEXT */
     Newxz(next, 1, struct trie_node);
@@ -83,9 +93,9 @@ add_next_node(struct trie_node *node, unsigned int c) {
     NTH_ENTRY(node, node->entries).codepoint = c;
     node->entries++;
     /* XXX: this is asymptotically slow */
-    qsort(node->map, node->entries, sizeof NTH_ENTRY(node, 0), compare_map_entries);
+    qsort(node->map, node->entries, sizeof next, compare_map_entries);
 
-    return next;
+    return node;
 }
 
 static void
@@ -223,19 +233,41 @@ new(package, ...)
         }
         Newxz(root, 1, struct trie_node);
         for (i = 1;  i < items;  i++) {
-            STRLEN len;
+            STRLEN len, j;
             STRLEN char_length = -1;
             SV *sv = ST(i);
             char *s = SvPVutf8(sv, len);
-            struct trie_node *node = root;
+            struct trie_node *curr = root, *parent = 0;
 
             while (len > 0) {
                 unsigned c = utf8_to_uvuni(s, &char_length);
-                node = add_next_node(node, c);
+                struct trie_node *node = realloc_with_codepoint(curr, c);
+
+                /* Take whatever pointed to CURR, and replace its CURR
+                 * pointer with NODE. */
+                if (!parent) {
+                    root = node;
+                }
+                else {
+                    for (j = 0;  j < parent->entries;  j++) {
+                        if (NTH_ENTRY(parent, j).next == curr) {
+                            NTH_ENTRY(parent, j).next = node;
+                            break;
+                        }
+                    }
+                }
+
+                /* Update loop-control variables */
                 s += char_length;
                 len -= char_length;
+                parent = node;
+                fprintf(stderr, "look for %c in %p\n", c, node);
+                trie_dump("", 0, node);
+
+                curr = find_next_node(node, c);
             }
-            node->final = 1;
+
+            curr->final = 1;
         }
     RETVAL = root;
     OUTPUT:
