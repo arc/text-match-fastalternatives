@@ -134,6 +134,8 @@ trie_dump(const char *prev, I32 prev_len, const struct node *node) {
     strcpy(state, prev);
     for (i = 0;  i < node->size;  i++)
         if (node->next[i]) {
+            /* XXX: The %lc format only works in C99, so this method isn't
+             * documented at the moment. */
             int n = sprintf(state + prev_len, "%lc", i + node->min);
             trie_dump(state, prev_len + n, node->next[i]);
         }
