@@ -17,6 +17,11 @@ struct node {
     struct node *next[1];       /* really a variable-length array */
 };
 
+struct trie {
+    struct node *root;
+    int has_unicode;
+};
+
 #define BIGNODE_MAX 256
 struct bignode;
 struct bignode {
@@ -24,7 +29,7 @@ struct bignode {
     struct bignode *next[BIGNODE_MAX]; /* one for every possible byte */
 };
 
-typedef struct node *Text__Match__FastAlternatives;
+typedef struct trie *Text__Match__FastAlternatives;
 
 #define DEF_FREE(type, free_trie, limit)        \
     static void                                 \
@@ -118,6 +123,16 @@ static struct node *shrink_bigtrie(struct bignode *big) {
     return node;
 }
 
+static int trie_has_unicode(const struct node *node) {
+    unsigned int i;
+    if (node->min + node->size > 0x7F)
+        return 1;
+    for (i = 0;  i < node->size;  i++)
+        if (node->next[i] && trie_has_unicode(node->next[i]))
+            return 1;
+    return 0;
+}
+
 static void trie_dump(const char *prev, I32 prev_len, struct node *node) {
     unsigned int i;
     unsigned int entries = 0;
@@ -146,6 +161,7 @@ new(package, ...)
     char *package
     PREINIT:
         struct bignode *root;
+        struct trie *trie;
         I32 i;
     CODE:
         for (i = 1;  i < items;  i++) {
@@ -167,8 +183,11 @@ new(package, ...)
             }
             node->final = 1;
         }
-        RETVAL = shrink_bigtrie(root);
+        Newxz(trie, 1, struct trie);
+        trie->root = shrink_bigtrie(root);
+        trie->has_unicode = trie_has_unicode(trie->root);
         free_bigtrie(root);
+        RETVAL = trie;
     OUTPUT:
         RETVAL
 
@@ -176,7 +195,8 @@ void
 DESTROY(trie)
     Text::Match::FastAlternatives trie
     CODE:
-        free_trie(trie);
+        free_trie(trie->root);
+        Safefree(trie);
 
 int
 match(trie, targetsv)
@@ -189,9 +209,10 @@ match(trie, targetsv)
         if (!SvOK(targetsv))
             croak("Target is not a defined scalar");
     CODE:
-        target = SvPVutf8(targetsv, target_len);
+        target = trie->has_unicode ? SvPVutf8(targetsv, target_len)
+               :                         SvPV(targetsv, target_len);
         do {
-            if (trie_match(trie, target, target_len))
+            if (trie_match(trie->root, target, target_len))
                 XSRETURN_YES;
             target++;
         } while (target_len-- > 0);
@@ -209,11 +230,12 @@ match_at(trie, targetsv, pos)
         if (!SvOK(targetsv))
             croak("Target is not a defined scalar");
     CODE:
-        target = SvPVutf8(targetsv, target_len);
+        target = trie->has_unicode ? SvPVutf8(targetsv, target_len)
+               :                         SvPV(targetsv, target_len);
         if (pos <= target_len) {
             target_len -= pos;
             target += pos;
-            if (trie_match(trie, target, target_len))
+            if (trie_match(trie->root, target, target_len))
                 XSRETURN_YES;
         }
         XSRETURN_NO;
@@ -230,7 +252,7 @@ exact_match(trie, targetsv)
             croak("Target is not a defined scalar");
     CODE:
         target = SvPV(targetsv, target_len);
-        if (trie_match_exact(trie, target, target_len))
+        if (trie_match_exact(trie->root, target, target_len))
             XSRETURN_YES;
         XSRETURN_NO;
 
@@ -238,4 +260,4 @@ void
 dump(trie)
     Text::Match::FastAlternatives trie
     CODE:
-        trie_dump("", 0, trie);
+        trie_dump("", 0, trie->root);
