@@ -46,7 +46,7 @@ DEF_FREE(struct bignode, free_bigtrie, BIGNODE_MAX)
 
 static int
 trie_match(struct node *node, const U8 *s, STRLEN len) {
-    unsigned char c;
+    unsigned char c, offset;
 
     for (;;) {
         if (node->final)
@@ -54,12 +54,10 @@ trie_match(struct node *node, const U8 *s, STRLEN len) {
         if (len == 0)
             return 0;
         c = *s;
-        if (c < node->min)
+        offset = c - node->min;
+        if (offset > c || offset >= node->size)
             return 0;
-        c -= node->min;
-        if (c >= node->size)
-            return 0;
-        node = node->next[c];
+        node = node->next[offset];
         if (!node)
             return 0;
         s++;
@@ -69,18 +67,16 @@ trie_match(struct node *node, const U8 *s, STRLEN len) {
 
 static int
 trie_match_exact(struct node *node, const U8 *s, STRLEN len) {
-    unsigned char c;
+    unsigned char c, offset;
 
     for (;;) {
         if (len == 0)
             return node->final;
         c = *s;
-        if (c < node->min)
+        offset = c - node->min;
+        if (offset > c || offset >= node->size)
             return 0;
-        c -= node->min;
-        if (c >= node->size)
-            return 0;
-        node = node->next[c];
+        node = node->next[offset];
         if (!node)
             return 0;
         s++;
