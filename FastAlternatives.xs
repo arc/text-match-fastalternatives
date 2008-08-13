@@ -137,6 +137,9 @@ static void trie_dump(const char *prev, I32 prev_len, struct node *node) {
     Safefree(state);
 }
 
+#define GET_TARGET(trie, sv, len) \
+    trie->has_unicode ? SvPVutf8(sv, len) : SvPV(sv, len)
+
 MODULE = Text::Match::FastAlternatives      PACKAGE = Text::Match::FastAlternatives
 
 PROTOTYPES: DISABLE
@@ -194,8 +197,7 @@ match(trie, targetsv)
         if (!SvOK(targetsv))
             croak("Target is not a defined scalar");
     CODE:
-        target = trie->has_unicode ? SvPVutf8(targetsv, target_len)
-               :                         SvPV(targetsv, target_len);
+        target = GET_TARGET(trie, targetsv, target_len);
         do {
             if (trie_match(trie->root, target, target_len))
                 XSRETURN_YES;
@@ -215,8 +217,7 @@ match_at(trie, targetsv, pos)
         if (!SvOK(targetsv))
             croak("Target is not a defined scalar");
     CODE:
-        target = trie->has_unicode ? SvPVutf8(targetsv, target_len)
-               :                         SvPV(targetsv, target_len);
+        target = GET_TARGET(trie, targetsv, target_len);
         if (pos <= target_len) {
             target_len -= pos;
             target += pos;
@@ -236,8 +237,7 @@ exact_match(trie, targetsv)
         if (!SvOK(targetsv))
             croak("Target is not a defined scalar");
     CODE:
-        target = trie->has_unicode ? SvPVutf8(targetsv, target_len)
-               :                         SvPV(targetsv, target_len);
+        target = GET_TARGET(trie, targetsv, target_len);
         if (trie_match_exact(trie->root, target, target_len))
             XSRETURN_YES;
         XSRETURN_NO;
