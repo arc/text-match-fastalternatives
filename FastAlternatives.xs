@@ -11,18 +11,18 @@
 
 #define MIN_NODES 256
 
-struct trie_node;
-struct trie_node {
+struct node;
+struct node {
     unsigned size  : 9;
     unsigned min   : 8;
     unsigned final : 1;
-    struct trie_node *next[MIN_NODES];
+    struct node *next[MIN_NODES];
 };
 
-typedef struct trie_node *Text__Match__FastAlternatives;
+typedef struct node *Text__Match__FastAlternatives;
 
 static void
-free_trie(struct trie_node *node) {
+free_trie(struct node *node) {
     unsigned int i;
     for (i = 0;  i < node->size;  i++)
         if (node->next[i])
@@ -31,7 +31,7 @@ free_trie(struct trie_node *node) {
 }
 
 static int
-trie_match(struct trie_node *node, const U8 *s, STRLEN len) {
+trie_match(struct node *node, const U8 *s, STRLEN len) {
     unsigned char c;
 
     for (;;) {
@@ -54,7 +54,7 @@ trie_match(struct trie_node *node, const U8 *s, STRLEN len) {
 }
 
 static int
-trie_match_exact(struct trie_node *node, const U8 *s, STRLEN len) {
+trie_match_exact(struct node *node, const U8 *s, STRLEN len) {
     unsigned char c;
 
     for (;;) {
@@ -74,7 +74,7 @@ trie_match_exact(struct trie_node *node, const U8 *s, STRLEN len) {
     }
 }
 
-static void trie_dump(const char *prev, I32 prev_len, struct trie_node *node) {
+static void trie_dump(const char *prev, I32 prev_len, struct node *node) {
     unsigned int i;
     unsigned int entries = 0;
     char *state;
@@ -101,7 +101,7 @@ Text::Match::FastAlternatives
 new(package, ...)
     char *package
     PREINIT:
-        struct trie_node *root;
+        struct node *root;
         I32 i;
     CODE:
         for (i = 1;  i < items;  i++) {
@@ -109,17 +109,17 @@ new(package, ...)
             if (!SvOK(sv))
                 croak("Undefined element in Text::Match::FastAlternatives->new");
         }
-        Newxz(root, 1, struct trie_node);
+        Newxz(root, 1, struct node);
         root->size = MIN_NODES;
         for (i = 1;  i < items;  i++) {
             STRLEN pos, len;
             SV *sv = ST(i);
             char *s = SvPVutf8(sv, len);
-            struct trie_node *node = root;
+            struct node *node = root;
             for (pos = 0;  pos < len;  pos++) {
                 unsigned char c = s[pos];
                 if (!node->next[c]) {
-                    Newxz(node->next[c], 1, struct trie_node);
+                    Newxz(node->next[c], 1, struct node);
                     node->next[c]->min = 0;
                     node->next[c]->size = MIN_NODES;
                 }
