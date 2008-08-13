@@ -44,45 +44,34 @@ typedef struct trie *Text__Match__FastAlternatives;
 DEF_FREE(struct    node, free_trie, node->size)
 DEF_FREE(struct bignode, free_bigtrie, BIGNODE_MAX)
 
-static int
-trie_match(struct node *node, const U8 *s, STRLEN len) {
-    unsigned char c, offset;
-
-    for (;;) {
-        if (node->final)
-            return 1;
-        if (len == 0)
-            return 0;
-        c = *s;
-        offset = c - node->min;
-        if (offset > c || offset >= node->size)
-            return 0;
-        node = node->next[offset];
-        if (!node)
-            return 0;
-        s++;
-        len--;
+#define DEF_MATCH(trie_match, return_when_done)                 \
+    static int                                                  \
+    trie_match(struct node *node, const U8 *s, STRLEN len) {    \
+        unsigned char c, offset;                                \
+                                                                \
+        for (;;) {                                              \
+            return_when_done;                                   \
+            c = *s;                                             \
+            offset = c - node->min;                             \
+            if (offset > c || offset >= node->size)             \
+                return 0;                                       \
+            node = node->next[offset];                          \
+            if (!node)                                          \
+                return 0;                                       \
+            s++;                                                \
+            len--;                                              \
+        }                                                       \
     }
-}
 
-static int
-trie_match_exact(struct node *node, const U8 *s, STRLEN len) {
-    unsigned char c, offset;
+DEF_MATCH(trie_match,
+          if (node->final)
+              return 1;
+          if (len == 0)
+              return 0)
 
-    for (;;) {
-        if (len == 0)
-            return node->final;
-        c = *s;
-        offset = c - node->min;
-        if (offset > c || offset >= node->size)
-            return 0;
-        node = node->next[offset];
-        if (!node)
-            return 0;
-        s++;
-        len--;
-    }
-}
+DEF_MATCH(trie_match_exact,
+          if (len == 0)
+              return node->final)
 
 static struct node *shrink_bigtrie(struct bignode *big) {
     int min = -1, max = -1, size;
