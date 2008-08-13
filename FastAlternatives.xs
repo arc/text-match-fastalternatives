@@ -251,7 +251,8 @@ exact_match(trie, targetsv)
         if (!SvOK(targetsv))
             croak("Target is not a defined scalar");
     CODE:
-        target = SvPV(targetsv, target_len);
+        target = trie->has_unicode ? SvPVutf8(targetsv, target_len)
+               :                         SvPV(targetsv, target_len);
         if (trie_match_exact(trie->root, target, target_len))
             XSRETURN_YES;
         XSRETURN_NO;
