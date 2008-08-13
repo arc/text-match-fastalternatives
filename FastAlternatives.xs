@@ -73,7 +73,8 @@ DEF_MATCH(trie_match_exact,
           if (len == 0)
               return node->final)
 
-static struct node *shrink_bigtrie(struct bignode *big) {
+static struct node *
+shrink_bigtrie(struct bignode *big) {
     int min = -1, max = -1, size;
     unsigned int i;
     struct node *node;
@@ -108,7 +109,8 @@ static struct node *shrink_bigtrie(struct bignode *big) {
     return node;
 }
 
-static int trie_has_unicode(const struct node *node) {
+static int
+trie_has_unicode(const struct node *node) {
     unsigned int i;
     if (node->min + node->size > 0x7F)
         return 1;
@@ -118,7 +120,8 @@ static int trie_has_unicode(const struct node *node) {
     return 0;
 }
 
-static void trie_dump(const char *prev, I32 prev_len, struct node *node) {
+static void
+trie_dump(const char *prev, I32 prev_len, struct node *node) {
     unsigned int i;
     unsigned int entries = 0;
     char *state;
