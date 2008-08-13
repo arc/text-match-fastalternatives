@@ -11,9 +11,9 @@
 
 struct node;
 struct node {
-    unsigned size  : 9;         /* total "next" pointers (incl static 1) */
-    unsigned min   : 8;         /* codepoint of next[0] */
-    unsigned final : 1;
+    unsigned short size;        /* total "next" pointers (incl static one) */
+    unsigned char min;          /* codepoint of next[0] */
+    unsigned char final;
     struct node *next[1];       /* really a variable-length array */
 };
 
