@@ -160,7 +160,7 @@ new(package, ...)
         for (i = 1;  i < items;  i++) {
             SV *sv = ST(i);
             if (!SvOK(sv))
-                croak("Undefined element in Text::Match::FastAlternatives->new");
+                croak("Undefined element in %s->new", package);
         }
         Newxz(root, 1, struct bignode);
         for (i = 1;  i < items;  i++) {
