@@ -15,10 +15,8 @@ DESCRIPTION
     ("keys") in a larger string. It is particularly efficient when the set
     of keys is large.
 
-    This efficiency comes at the cost of some flexibility: the keys may not
-    contain any control characters or non-ASCII characters; and it cannot do
-    case-insensitive matching. If you want case-insensitivity, you have to
-    fold case yourself:
+    This efficiency comes at the cost of some flexibility: if you want
+    case-insensitive matching, you have to fold case yourself:
 
         my $expletives = Text::Match::FastAlternatives->new(
             map { lc } @naughty);
@@ -64,8 +62,7 @@ METHODS
     Text::Match::FastAlternatives->new(@keys)
         Constructs a matcher that can efficiently search for all of the
         @keys in parallel. Throws an exception if any of the keys are
-        undefined, or if any of them contain any control characters or
-        non-ASCII characters.
+        undefined.
 
     $matcher->match($target)
         Returns a boolean value indicating whether the $target string
@@ -87,6 +84,18 @@ CAVEATS
     If you write a subclass with its own destructor, you will need to invoke
     the base destructor, or you will leak memory.
 
+  Interaction with Perl internals
+    Text::Match::FastAlternatives may change the Perl-internal encoding of
+    strings passed to "new" or to its "match" methods. This is not
+    considered a bug, as the Perl-internal encoding of a string is not
+    normally of interest to Perl code (as opposed to Perl internals).
+    However, you may encounter situations where preserving a string's
+    existing encoding is important (perhaps to work around a bug in some
+    other module). If so, you may need to copy scalar variables before
+    matching them:
+
+        $matches++ if $tmfa->match(my $temporary_copy = $original);
+
 IMPLEMENTATION
     Text::Match::FastAlternatives manages to be so fast by using a trie
     internally. The time to find a match at a given position in the string
@@ -101,7 +110,7 @@ IMPLEMENTATION
 
 SEE ALSO
     <http://en.wikipedia.org/wiki/Trie>, Regexp::Trie, Regexp::Optimizer,
-    Regexp::Assemble, perl5100delta.
+    Regexp::Assemble, perl5100delta, perlunitut, perlunifaq.
 
 AUTHOR
     Aaron Crane <arc@cpan.org>

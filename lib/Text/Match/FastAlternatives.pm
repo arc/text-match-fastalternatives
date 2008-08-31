@@ -31,10 +31,8 @@ Text::Match::FastAlternatives - efficient search for many strings
 This module allows you to search for any of a list of substrings ("keys") in a
 larger string.  It is particularly efficient when the set of keys is large.
 
-This efficiency comes at the cost of some flexibility: the keys may not contain
-any control characters or non-ASCII characters; and it cannot do
-case-insensitive matching.  If you want case-insensitivity, you have to fold
-case yourself:
+This efficiency comes at the cost of some flexibility: if you want
+case-insensitive matching, you have to fold case yourself:
 
     my $expletives = Text::Match::FastAlternatives->new(
         map { lc } @naughty);
@@ -81,8 +79,7 @@ Text::Match::FastAlternatives was 21% faster than perl-5.10.0; with 339 keys
 =item Text::Match::FastAlternatives->new(@keys)
 
 Constructs a matcher that can efficiently search for all of the @keys in
-parallel.  Throws an exception if any of the keys are undefined, or if any of
-them contain any control characters or non-ASCII characters.
+parallel.  Throws an exception if any of the keys are undefined.
 
 =item $matcher->match($target)
 
@@ -110,6 +107,18 @@ Text::Match::FastAlternatives has a C<DESTROY> method implemented in XS.  If
 you write a subclass with its own destructor, you will need to invoke the base
 destructor, or you will leak memory.
 
+=head2 Interaction with Perl internals
+
+Text::Match::FastAlternatives may change the Perl-internal encoding of
+strings passed to C<new> or to its C<match> methods.  This is not considered
+a bug, as the Perl-internal encoding of a string is not normally of interest
+to Perl code (as opposed to Perl internals).  However, you may encounter
+situations where preserving a string's existing encoding is important
+(perhaps to work around a bug in some other module).  If so, you may need to
+copy scalar variables before matching them:
+
+    $matches++ if $tmfa->match(my $temporary_copy = $original);
+
 =head1 IMPLEMENTATION
 
 Text::Match::FastAlternatives manages to be so fast by using a trie internally.
@@ -126,7 +135,7 @@ position, so they have worst-case running time of O(min(I<n>, I<m>)).
 =head1 SEE ALSO
 
 L<http://en.wikipedia.org/wiki/Trie>, L<Regexp::Trie>, L<Regexp::Optimizer>,
-L<Regexp::Assemble>, L<perl5100delta>.
+L<Regexp::Assemble>, L<perl5100delta>, L<perlunitut>, L<perlunifaq>.
 
 =head1 AUTHOR
 
