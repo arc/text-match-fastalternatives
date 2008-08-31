@@ -7,12 +7,6 @@ change it if there seems to be no other interest in it.
 
 - Case-insensitive matching, if it can be done without killing performance
 
-- Allow keys to contain any character, if I can find a way of doing it that
-  doesn't kill performance for the simple case I care about.  Possibly there
-  should be two implementations: a super-fast, printable-ASCII-only one, and a
-  more flexible but slower one.  If so, the implementation should probably be
-  selected automatically at construction time
-
 - Record the minimum length of all the keys, and reject a string early if it
   doesn't have enough characters.  For the case I currently care about, doing
   that would save me only two calls to trie_match() per failed match, so I
