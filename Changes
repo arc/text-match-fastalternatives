@@ -20,3 +20,8 @@ Revision history for Perl extension Text::Match::FastAlternatives
 	- update documentation for Perl 5.10
 	- label this release as 1.00; the code has been stable for ages
 	- if you're already using 0.04 or 0.05, there's no need to upgrade
+
+1.01  Sun Aug 31 16:05:05 2008
+	- more flexible: now fully supports Unicode
+	- uses less memory: many nodes 376 bytes smaller on 32-bit systems
+	- fractionally slower in some cases, but hard to measure the difference
