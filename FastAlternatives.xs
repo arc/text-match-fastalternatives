@@ -128,14 +128,14 @@ trie_dump(const char *prev, I32 prev_len, const struct node *node) {
     for (i = 0;  i < node->size;  i++)
         if (node->next[i])
             entries++;
-    printf("[%s]: min=%u[%c] size=%u final=%u entries=%u\n", prev, node->min,
+    /* XXX: This relies on the %lc printf format, which only works in C99,
+     * so the corresponding method isn't documented at the moment. */
+    printf("[%s]: min=%u[%lc] size=%u final=%u entries=%u\n", prev, node->min,
            node->min, node->size, node->final, entries);
     Newxz(state, prev_len + 3, char);
     strcpy(state, prev);
     for (i = 0;  i < node->size;  i++)
         if (node->next[i]) {
-            /* XXX: The %lc format only works in C99, so this method isn't
-             * documented at the moment. */
             int n = sprintf(state + prev_len, "%lc", i + node->min);
             trie_dump(state, prev_len + n, node->next[i]);
         }
