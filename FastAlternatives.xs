@@ -142,6 +142,10 @@ trie_dump(const char *prev, I32 prev_len, const struct node *node) {
     Safefree(state);
 }
 
+/* If the trie used Unicode, make sure that the target string uses the same
+ * encoding.  But if the trie didn't use Unicode, it doesn't matter what
+ * encoding the target uses for any supra-ASCII characters it contains,
+ * because they'll never be found in the trie. */
 #define GET_TARGET(trie, sv, len) \
     trie->has_unicode ? SvPVutf8(sv, len) : SvPV(sv, len)
 
