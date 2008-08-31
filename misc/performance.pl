@@ -7,9 +7,9 @@ use warnings;
 # hardware:
 #
 #             Rate     rx rxtrie   tmfa
-#   rx     0.607/s     --   -87%   -99%
-#   rxtrie  4.62/s   661%     --   -94%
-#   tmfa    75.5/s 12346%  1535%     --
+#   rx     0.539/s     --   -87%   -99%
+#   rxtrie  4.14/s   667%     --   -95%
+#   tmfa    76.5/s 14093%  1749%     --
 #
 # This isn't quite as good as I claim in the perldoc.  That's because I'm
 # testing with fewer keys (246, not 339), and the regex solutions get slower as
