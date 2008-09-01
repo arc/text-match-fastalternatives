@@ -3,7 +3,7 @@ package Text::Match::FastAlternatives;
 use strict;
 use warnings;
 
-our $VERSION = '1.01';
+our $VERSION = '1.02';
 use base qw<DynaLoader>;
 
 __PACKAGE__->bootstrap($VERSION);

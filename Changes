@@ -25,3 +25,8 @@ Revision history for Perl extension Text::Match::FastAlternatives
 	- more flexible: now fully supports Unicode
 	- uses less memory: many nodes 376 bytes smaller on 32-bit systems
 	- fractionally slower in some cases, but hard to measure the difference
+
+1.02  Mon Sep  1 10:16:22 2008
+	- fix test suite to work in Perl 5.10
+	- an aside: on 64-bit CPUs, 1.01/1.02 are probably faster than 1.00
+	- no code changes; if 1.01 works for you, there's no need to upgrade
