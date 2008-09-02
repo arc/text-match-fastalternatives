@@ -6,8 +6,10 @@ use warnings;
 use Test::More;
 
 BEGIN {
-    binmode Test::More->builder->output,         ':utf8';
-    binmode Test::More->builder->failure_output, ':utf8';
+    if ($] >= 5.008) {
+        binmode Test::More->builder->output,         ':utf8';
+        binmode Test::More->builder->failure_output, ':utf8';
+    }
 }
 
 my @cities = read_lines('t/data/cities.txt');
@@ -35,10 +37,14 @@ for my $line (@cities) {
 
 sub read_lines {
     my ($filename) = @_;
-    open my $fh, '<:utf8', $filename
+    my $mode = $] >= 5.008 ? '<:utf8' : '<';
+    open my $fh, $mode, $filename
         or die "can't open $filename for reading: $!\n";
     my @lines = <$fh>;
     chomp @lines;
+    if ($] >= 5.008) {
+        $_ = pack 'U*', unpack 'C*', $_ for @lines;
+    }
     return @lines;
 }
 
