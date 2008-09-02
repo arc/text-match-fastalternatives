@@ -30,3 +30,7 @@ Revision history for Perl extension Text::Match::FastAlternatives
 	- fix test suite to work in Perl 5.10
 	- an aside: on 64-bit CPUs, 1.01/1.02 are probably faster than 1.00
 	- no code changes; if 1.01 works for you, there's no need to upgrade
+
+1.03  Tue Sep  2 10:48:16 2008
+	- fix test suite to work in Perl 5.6
+	- no code changes; if 1.02 works for you, there's no need to upgrade
