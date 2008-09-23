@@ -5,6 +5,13 @@ use warnings;
 
 use Test::More;
 
+BEGIN {
+    if ($] >= 5.008) {
+        binmode Test::More->builder->output,         ':utf8';
+        binmode Test::More->builder->failure_output, ':utf8';
+    }
+}
+
 my $alphabet = join '', map { chr } 32 .. 126;
 
 my %tmfa = (
@@ -13,6 +20,7 @@ my %tmfa = (
     a        => [ 'a' ],
     alphabet => [ $alphabet ],
     prefixes => [ qw<foo foobar> ],
+    section  => [ "\xA7" ],
 );
 
 my @tests = (
@@ -75,6 +83,18 @@ my @tests = (
     [prefixes =>  1, 'fooba',       0],
     [prefixes =>  1, 'foobar',      0],
     [prefixes =>  1, 'foobarx',     0],
+    [section  =>  0, '',            0],
+    [section  =>  1, '',            0],
+    [section  =>  0, 'foo',         0],
+    [section  =>  0, "\xA7.1.2",    1],
+    [section  =>  1, "\xA7.1.2",    0],
+    [section  =>  0, " \xA7.1.2",   0],
+    [section  =>  1, " \xA7.1.2",   1],
+    [section  =>  0, "\xA9\xA7",    0],
+    [section  =>  1, "\xA9\xA7",    1],
+    [section  =>  2, "\xA9\xA7",    0],
+    [section  =>  3, "\xA9\xA7",    0],
+    [section  =>  4, "\xA9\xA7",    0],
 );
 
 plan tests => 1 + @tests;
