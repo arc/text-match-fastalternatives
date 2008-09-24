@@ -142,6 +142,25 @@ trie_dump(const char *prev, I32 prev_len, const struct node *node) {
     Safefree(state);
 }
 
+static int get_byte_offset(SV *sv, int pos) {
+    STRLEN len;
+    char *s;
+    unsigned char *p;
+    int i;
+    if (!SvUTF8(sv))
+        return pos;
+    s = SvPV(sv, len);
+    p = s;
+    for (i = 0;  i < pos && p < p + len;  i++)
+        p += *p < 0x80u ? 1
+           : *p < 0xE0u ? 2
+           : *p < 0xF0u ? 3
+           : *p < 0xF8u ? 4
+           : *p < 0xFCu ? 5
+           :              6;
+    return p - (unsigned char *) s;
+}
+
 /* If the trie used Unicode, make sure that the target string uses the same
  * encoding.  But if the trie didn't use Unicode, it doesn't matter what
  * encoding the target uses for any supra-ASCII characters it contains,
@@ -227,6 +246,7 @@ match_at(trie, targetsv, pos)
             croak("Target is not a defined scalar");
     CODE:
         target = GET_TARGET(trie, targetsv, target_len);
+        pos = get_byte_offset(targetsv, pos);
         if (pos <= target_len) {
             target_len -= pos;
             target += pos;
