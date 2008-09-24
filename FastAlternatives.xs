@@ -146,18 +146,16 @@ static int get_byte_offset(SV *sv, int pos) {
     STRLEN len;
     char *s;
     unsigned char *p;
-    int i;
     if (!SvUTF8(sv))
         return pos;
     s = SvPV(sv, len);
-    p = s;
-    for (i = 0;  i < pos && p < p + len;  i++)
-        p += *p < 0x80u ? 1
-           : *p < 0xE0u ? 2
-           : *p < 0xF0u ? 3
-           : *p < 0xF8u ? 4
-           : *p < 0xFCu ? 5
-           :              6;
+    for (p = s;  pos > 0;  pos--) {
+        /* Skip the sole byte (ASCII char) or leading byte (top >=2 bits set) */
+        p++;
+        /* Skip any continuation bytes (top bit set but not next bit) */
+        while ((*p & 0xC0u) == 0x80u)
+            p++;
+    }
     return p - (unsigned char *) s;
 }
 
