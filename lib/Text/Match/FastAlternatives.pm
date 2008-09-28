@@ -3,7 +3,7 @@ package Text::Match::FastAlternatives;
 use strict;
 use warnings;
 
-our $VERSION = '1.03';
+our $VERSION = '1.04';
 
 use XSLoader;
 XSLoader::load(__PACKAGE__, $VERSION);
