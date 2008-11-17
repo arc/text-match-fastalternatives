@@ -141,11 +141,10 @@ trie_dump(const char *prev, I32 prev_len, const struct node *node) {
 
 static int get_byte_offset(SV *sv, int pos) {
     STRLEN len;
-    char *s;
-    unsigned char *p;
+    unsigned char *s, *p;
     if (!SvUTF8(sv))
         return pos;
-    s = SvPV(sv, len);
+    s = (unsigned char *) SvPV(sv, len);
     for (p = s;  pos > 0;  pos--) {
         /* Skip the sole byte (ASCII char) or leading byte (top >=2 bits set) */
         p++;
@@ -153,7 +152,7 @@ static int get_byte_offset(SV *sv, int pos) {
         while ((*p & 0xC0u) == 0x80u)
             p++;
     }
-    return p - (unsigned char *) s;
+    return p - s;
 }
 
 /* If the trie used Unicode, make sure that the target string uses the same
@@ -171,7 +170,7 @@ static int get_byte_offset(SV *sv, int pos) {
  * switcheroo, though; the inner loop is in a function that knows nothing of
  * SVs or encodings. */
 #define GET_TARGET(trie, sv, len) \
-    trie->has_unicode ? SvPVutf8(sv, len) : SvPV(sv, len)
+    ((unsigned char *) (trie->has_unicode ? SvPVutf8(sv, len) : SvPV(sv, len)))
 
 MODULE = Text::Match::FastAlternatives      PACKAGE = Text::Match::FastAlternatives
 
@@ -225,7 +224,7 @@ match(trie, targetsv)
     SV *targetsv
     PREINIT:
         STRLEN target_len;
-        char *target;
+        unsigned char *target;
     INIT:
         if (!SvOK(targetsv))
             croak("Target is not a defined scalar");
@@ -245,14 +244,14 @@ match_at(trie, targetsv, pos)
     int pos
     PREINIT:
         STRLEN target_len;
-        char *target;
+        unsigned char *target;
     INIT:
         if (!SvOK(targetsv))
             croak("Target is not a defined scalar");
     CODE:
         target = GET_TARGET(trie, targetsv, target_len);
         pos = get_byte_offset(targetsv, pos);
-        if (pos <= target_len) {
+        if (pos <= (int) target_len) {
             target_len -= pos;
             target += pos;
             if (trie_match(trie->root, target, target_len))
@@ -266,7 +265,7 @@ exact_match(trie, targetsv)
     SV *targetsv
     PREINIT:
         STRLEN target_len;
-        char *target;
+        unsigned char *target;
     INIT:
         if (!SvOK(targetsv))
             croak("Target is not a defined scalar");
