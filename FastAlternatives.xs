@@ -141,10 +141,10 @@ trie_dump(const char *prev, I32 prev_len, const struct node *node) {
 
 static int get_byte_offset(SV *sv, int pos) {
     STRLEN len;
-    unsigned char *s, *p;
+    const unsigned char *s, *p;
     if (!SvUTF8(sv))
         return pos;
-    s = (unsigned char *) SvPV(sv, len);
+    s = (const unsigned char *) SvPV(sv, len);
     for (p = s;  pos > 0;  pos--) {
         /* Skip the sole byte (ASCII char) or leading byte (top >=2 bits set) */
         p++;
@@ -224,7 +224,7 @@ match(trie, targetsv)
     SV *targetsv
     PREINIT:
         STRLEN target_len;
-        unsigned char *target;
+        const unsigned char *target;
     INIT:
         if (!SvOK(targetsv))
             croak("Target is not a defined scalar");
@@ -244,7 +244,7 @@ match_at(trie, targetsv, pos)
     int pos
     PREINIT:
         STRLEN target_len;
-        unsigned char *target;
+        const unsigned char *target;
     INIT:
         if (!SvOK(targetsv))
             croak("Target is not a defined scalar");
@@ -265,7 +265,7 @@ exact_match(trie, targetsv)
     SV *targetsv
     PREINIT:
         STRLEN target_len;
-        unsigned char *target;
+        const unsigned char *target;
     INIT:
         if (!SvOK(targetsv))
             croak("Target is not a defined scalar");
