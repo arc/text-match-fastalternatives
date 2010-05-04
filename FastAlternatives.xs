@@ -1,5 +1,7 @@
 /* -*- c -*- */
 
+#define PERL_NO_GET_CONTEXT
+
 #include "EXTERN.h"
 #include "perl.h"
 #include "XSUB.h"
@@ -78,7 +80,6 @@ shrink_bigtrie(const struct bignode *big) {
     int min = PERL_INT_MAX, max = 0, size, i;
     struct node *node;
     void *vnode;
-
     for (i = 0;  i < BIGNODE_MAX;  i++) {
         if (!big->next[i])
             continue;
@@ -139,7 +140,7 @@ trie_dump(const char *prev, I32 prev_len, const struct node *node) {
     Safefree(state);
 }
 
-static int get_byte_offset(SV *sv, int pos) {
+static int get_byte_offset(pTHX_ SV *sv, int pos) {
     STRLEN len;
     const unsigned char *s, *p;
     if (!SvUTF8(sv))
@@ -250,7 +251,7 @@ match_at(trie, targetsv, pos)
             croak("Target is not a defined scalar");
     CODE:
         target = GET_TARGET(trie, targetsv, target_len);
-        pos = get_byte_offset(targetsv, pos);
+        pos = get_byte_offset(aTHX_ targetsv, pos);
         if (pos <= (int) target_len) {
             target_len -= pos;
             target += pos;
