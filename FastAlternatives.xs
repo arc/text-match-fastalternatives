@@ -75,13 +75,12 @@ DEF_MATCH(trie_match_exact,
           if (len == 0)
               return node->final)
 
-static struct node *
-shrink_bigtrie(const struct bignode *big) {
-    int min = PERL_INT_MAX, max = 0, size, i;
-    struct node *node;
-    void *vnode;
+static void
+bignode_dimensions(const struct bignode *node, unsigned char *pmin, unsigned short *psize) {
+    int min = PERL_INT_MAX, max = 0, i;
+
     for (i = 0;  i < BIGNODE_MAX;  i++) {
-        if (!big->next[i])
+        if (!node->next[i])
             continue;
         if (i < min)
             min = i;
@@ -92,7 +91,20 @@ shrink_bigtrie(const struct bignode *big) {
     if (min == PERL_INT_MAX)    /* empty node; force min=0, max=0 */
         min = 0;
 
-    size = max - min + 1;
+    *pmin = min;
+    *psize = max - min + 1;
+}
+
+static struct node *
+shrink_bigtrie(const struct bignode *big) {
+    struct node *node;
+    void *vnode;
+    unsigned char min;
+    unsigned short size;
+    int i;
+
+    bignode_dimensions(big, &min, &size);
+
     Newxz(vnode, sizeof(struct node) + (size-1) * sizeof(struct node *), char);
     node = vnode;
 
