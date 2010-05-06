@@ -21,6 +21,7 @@ struct node {
 
 struct trie {
     struct node *root;
+    void *buf;
     int has_unicode;
 };
 
@@ -33,18 +34,20 @@ struct bignode {
 
 typedef struct trie *Text__Match__FastAlternatives;
 
-#define DEF_FREE(type, free_trie, limit)        \
-    static void                                 \
-    free_trie(type *node) {                     \
-        unsigned int i;                         \
-        for (i = 0;  i < limit;  i++)           \
-            if (node->next[i])                  \
-                free_trie(node->next[i]);       \
-        Safefree(node);                         \
-    }
+static void *buf_alloc(void **buf, size_t n) {
+    unsigned char *region = *buf;
+    *buf = region + n;
+    return region;
+}
 
-DEF_FREE(struct    node, free_trie, node->size)
-DEF_FREE(struct bignode, free_bigtrie, BIGNODE_MAX)
+static void
+free_bigtrie(struct bignode *node) {
+    unsigned int i;
+    for (i = 0;  i < BIGNODE_MAX;  i++)
+        if (node->next[i])
+            free_bigtrie(node->next[i]);
+    Safefree(node);
+}
 
 #define DEF_MATCH(trie_match, return_when_done)                         \
     static int                                                          \
@@ -95,18 +98,34 @@ bignode_dimensions(const struct bignode *node, unsigned char *pmin, unsigned sho
     *psize = max - min + 1;
 }
 
+static size_t trie_alloc_size(const struct bignode *node) {
+    unsigned char min;
+    unsigned short size;
+    int i;
+    size_t n = sizeof(struct node);
+
+    bignode_dimensions(node, &min, &size);
+
+    /* -1 is because of the statically-allocated member */
+    n += (size - 1) * sizeof(struct node *);
+
+    for (i = 0;  i < BIGNODE_MAX;  i++)
+        if (node->next[i])
+            n += trie_alloc_size(node->next[i]);
+
+    return n;
+}
+
 static struct node *
-shrink_bigtrie(const struct bignode *big) {
+shrink_bignode(const struct bignode *big, void **buf) {
     struct node *node;
-    void *vnode;
     unsigned char min;
     unsigned short size;
     int i;
 
     bignode_dimensions(big, &min, &size);
 
-    Newxz(vnode, sizeof(struct node) + (size-1) * sizeof(struct node *), char);
-    node = vnode;
+    node = buf_alloc(buf, sizeof(struct node) + (size-1) * sizeof(struct node *));
 
     node->final = big->final;
     node->min = min;
@@ -114,7 +133,7 @@ shrink_bigtrie(const struct bignode *big) {
 
     for (i = min;  i < BIGNODE_MAX;  i++)
         if (big->next[i])
-            node->next[i - min] = shrink_bigtrie(big->next[i]);
+            node->next[i - min] = shrink_bignode(big->next[i], buf);
 
     return node;
 }
@@ -128,6 +147,22 @@ trie_has_unicode(const struct node *node) {
         if (node->next[i] && trie_has_unicode(node->next[i]))
             return 1;
     return 0;
+}
+
+static struct trie *shrink_bigtrie(const struct bignode *root) {
+    size_t alloc = trie_alloc_size(root) + sizeof(struct trie);
+    void *buf, *orig_buf;
+    struct trie *trie;
+
+    Newxz(buf, alloc, char);
+    orig_buf = buf;
+    trie = buf_alloc(&buf, sizeof *trie);
+    trie->buf = orig_buf;       /* so it can be easily freed */
+
+    trie->root = shrink_bignode(root, &buf);
+
+    trie->has_unicode = trie_has_unicode(trie->root);
+    return trie;
 }
 
 static void
@@ -194,7 +229,6 @@ new(package, ...)
     char *package
     PREINIT:
         struct bignode *root;
-        struct trie *trie;
         I32 i;
     CODE:
         for (i = 1;  i < items;  i++) {
@@ -216,11 +250,8 @@ new(package, ...)
             }
             node->final = 1;
         }
-        Newxz(trie, 1, struct trie);
-        trie->root = shrink_bigtrie(root);
-        trie->has_unicode = trie_has_unicode(trie->root);
+        RETVAL = shrink_bigtrie(root);
         free_bigtrie(root);
-        RETVAL = trie;
     OUTPUT:
         RETVAL
 
@@ -228,8 +259,7 @@ void
 DESTROY(trie)
     Text::Match::FastAlternatives trie
     CODE:
-        free_trie(trie->root);
-        Safefree(trie);
+        Safefree(trie->buf);
 
 int
 match(trie, targetsv)
