@@ -41,6 +41,9 @@ case-insensitive matching, you have to fold case yourself:
             if $expletives->match(lc $line);
     }
 
+(The same applies if you want matching that is insensitive to Unicode
+normalization forms; see L<Unicode::Normalize>.)
+
 This module is designed as a drop-in replacement for Perl code of the following
 form:
 
@@ -112,7 +115,7 @@ destructor, or you will leak memory.
 Text::Match::FastAlternatives may change the Perl-internal encoding of
 strings passed to C<new> or to its C<match> methods.  This is not considered
 a bug, as the Perl-internal encoding of a string is not normally of interest
-to Perl code (as opposed to Perl internals).  However, you may encounter
+to Perl code (as opposed to C<perl> internals).  However, you may encounter
 situations where preserving a string's existing encoding is important
 (perhaps to work around a bug in some other module).  If so, you may need to
 copy scalar variables before matching them:
@@ -135,7 +138,8 @@ position, so they have worst-case running time of O(min(I<n>, I<m>)).
 =head1 SEE ALSO
 
 L<http://en.wikipedia.org/wiki/Trie>, L<Regexp::Trie>, L<Regexp::Optimizer>,
-L<Regexp::Assemble>, L<perl5100delta>, L<perlunitut>, L<perlunifaq>.
+L<Regexp::Assemble>, L<Unicode::Normalize>, L<perl5100delta>, L<perlunitut>,
+L<perlunifaq>.
 
 =head1 AUTHOR
 
@@ -143,7 +147,7 @@ Aaron Crane E<lt>arc@cpan.orgE<gt>
 
 =head1 COPYRIGHT
 
-Copyright 2006, 2007, 2008 Aaron Crane.
+Copyright 2006, 2007, 2008, 2010 Aaron Crane.
 
 This library is free software; you can redistribute it and/or modify it under
 the terms of the Artistic License, or (at your option) under the terms of the
