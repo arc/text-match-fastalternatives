@@ -49,34 +49,63 @@ free_bigtrie(struct bignode *node) {
     Safefree(node);
 }
 
-#define DEF_MATCH(trie_match, return_when_done)                         \
-    static int                                                          \
-    trie_match(const struct node *node, const U8 *s, STRLEN len) {      \
-        unsigned char c, offset;                                        \
-                                                                        \
-        for (;;) {                                                      \
-            return_when_done;                                           \
-            c = *s;                                                     \
-            offset = c - node->min;                                     \
-            if (offset > c || offset >= node->size)                     \
-                return 0;                                               \
-            node = node->next[offset];                                  \
-            if (!node)                                                  \
-                return 0;                                               \
-            s++;                                                        \
-            len--;                                                      \
-        }                                                               \
+#define ADVANCE_OR(NextStartChar)           \
+    c = *s;                                 \
+    offset = c - node->min;                 \
+    if (offset > c || offset >= node->size) \
+        NextStartChar;                      \
+    node = node->next[offset];              \
+    if (!node)                              \
+        NextStartChar;                      \
+    s++;                                    \
+    len--;                                  \
+
+/* "Does any part of TARGET contain any matching substring?" */
+static int
+trie_match(const struct node *root, const U8 *target, STRLEN target_len) {
+    do {
+        unsigned char c, offset;
+        const U8 *s = target;
+        STRLEN len = target_len;
+        const struct node *node = root;
+        for (;;) {
+            if (node->final)
+                return 1;
+            if (len == 0)
+                break;
+            ADVANCE_OR(break);
+        }
+        target++;
+    } while (target_len --> 0);
+
+    return 0;
+}
+
+/* "Does TARGET begin with any matching substring?" */
+static int
+trie_match_anchored(const struct node *node, const U8 *s, STRLEN len) {
+    unsigned char c, offset;
+
+    for (;;) {
+        if (node->final)
+            return 1;
+        if (len == 0)
+            return 0;
+        ADVANCE_OR(return 0);
     }
+}
 
-DEF_MATCH(trie_match,
-          if (node->final)
-              return 1;
-          if (len == 0)
-              return 0)
+/* "Is TARGET exactly equal to any matching substring?" */
+static int
+trie_match_exact(const struct node *node, const U8 *s, STRLEN len) {
+    unsigned char c, offset;
 
-DEF_MATCH(trie_match_exact,
-          if (len == 0)
-              return node->final)
+    for (;;) {
+        if (len == 0)
+            return node->final;
+        ADVANCE_OR(return 0);
+    }
+}
 
 static void
 bignode_dimensions(const struct bignode *node, unsigned char *pmin, unsigned short *psize) {
@@ -273,11 +302,8 @@ match(trie, targetsv)
             croak("Target is not a defined scalar");
     CODE:
         target = GET_TARGET(trie, targetsv, target_len);
-        do {
-            if (trie_match(trie->root, target, target_len))
-                XSRETURN_YES;
-            target++;
-        } while (target_len-- > 0);
+        if (trie_match(trie->root, target, target_len))
+            XSRETURN_YES;
         XSRETURN_NO;
 
 int
@@ -297,7 +323,7 @@ match_at(trie, targetsv, pos)
         if (pos <= (int) target_len) {
             target_len -= pos;
             target += pos;
-            if (trie_match(trie->root, target, target_len))
+            if (trie_match_anchored(trie->root, target, target_len))
                 XSRETURN_YES;
         }
         XSRETURN_NO;
