@@ -35,9 +35,21 @@ struct bignode {
 
 typedef struct trie *Text__Match__FastAlternatives;
 
-static void *buf_alloc(void **buf, size_t n) {
-    unsigned char *region = *buf;
-    *buf = region + n;
+struct pool {
+    void *buf;
+    void *curr;
+};
+
+static struct pool pool_create(size_t n) {
+    struct pool pool;
+    Newxz(pool.buf, n, char);
+    pool.curr = pool.buf;
+    return pool;
+}
+
+static void *pool_alloc(struct pool *pool, size_t n) {
+    unsigned char *region = pool->curr;
+    pool->curr = region + n;
     return region;
 }
 
@@ -169,7 +181,7 @@ static size_t trie_alloc_size(const struct bignode *node) {
 }
 
 static struct node *
-shrink_bignode(const struct bignode *big, void **buf) {
+shrink_bignode(const struct bignode *big, struct pool *pool) {
     struct node *node;
     unsigned char min;
     unsigned short size;
@@ -177,7 +189,7 @@ shrink_bignode(const struct bignode *big, void **buf) {
 
     bignode_dimensions(big, &min, &size);
 
-    node = buf_alloc(buf, sizeof(struct node) + (size-1) * sizeof(struct node *));
+    node = pool_alloc(pool, sizeof(struct node) + (size-1) * sizeof(struct node *));
 
     node->final = big->final;
     node->min = min;
@@ -185,7 +197,7 @@ shrink_bignode(const struct bignode *big, void **buf) {
 
     for (i = min;  i < BIGNODE_MAX;  i++)
         if (big->next[i])
-            node->next[i - min] = shrink_bignode(big->next[i], buf);
+            node->next[i - min] = shrink_bignode(big->next[i], pool);
 
     return node;
 }
@@ -235,15 +247,11 @@ static void add_fail_pointers(pTHX_ struct node *root, AV *onfail) {
 
 static struct trie *shrink_bigtrie(pTHX_ const struct bignode *root, AV *onfail) {
     size_t alloc = trie_alloc_size(root) + sizeof(struct trie);
-    void *buf, *orig_buf;
-    struct trie *trie;
+    struct pool pool = pool_create(alloc);
+    struct trie *trie = pool_alloc(&pool, sizeof *trie);
+    trie->buf = pool.buf;
 
-    Newxz(buf, alloc, char);
-    orig_buf = buf;
-    trie = buf_alloc(&buf, sizeof *trie);
-    trie->buf = orig_buf;       /* so it can be easily freed */
-
-    trie->root = shrink_bignode(root, &buf);
+    trie->root = shrink_bignode(root, &pool);
     add_fail_pointers(aTHX_ trie->root, onfail);
 
     trie->has_unicode = trie_has_unicode(trie->root);
