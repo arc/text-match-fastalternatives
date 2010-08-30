@@ -16,6 +16,7 @@ struct node {
     unsigned short size;        /* total "next" pointers (incl static one) */
     unsigned char min;          /* codepoint of next[0] */
     unsigned char final;
+    struct node *fail;
     struct node *next[1];       /* really a variable-length array */
 };
 
@@ -58,27 +59,34 @@ free_bigtrie(struct bignode *node) {
     if (!node)                              \
         NextStartChar;                      \
     s++;                                    \
-    len--;                                  \
+    len--;
 
 /* "Does any part of TARGET contain any matching substring?" */
 static int
-trie_match(const struct node *root, const U8 *target, STRLEN target_len) {
-    do {
-        unsigned char c, offset;
-        const U8 *s = target;
-        STRLEN len = target_len;
-        const struct node *node = root;
-        for (;;) {
-            if (node->final)
-                return 1;
-            if (len == 0)
-                break;
-            ADVANCE_OR(break);
-        }
-        target++;
-    } while (target_len --> 0);
+trie_match(const struct node *root, const U8 *s, STRLEN len) {
+    unsigned char c;
+    const struct node *next, *node = root;
 
-    return 0;
+    for (;;) {
+        if (node->final)
+            return 1;
+        if (len == 0)
+            return 0;
+
+        c = *s;
+
+        for (;;) {
+            next = c < node->min || c - node->min >= node->size ? 0
+                 :       node->next[c - node->min];
+            if (next || !node->fail)
+                break;
+            node = node->fail;
+        }
+
+        node = next ? next : root;
+        s++;
+        len--;
+    }
 }
 
 /* "Does TARGET begin with any matching substring?" */
@@ -104,6 +112,21 @@ trie_match_exact(const struct node *node, const U8 *s, STRLEN len) {
         if (len == 0)
             return node->final;
         ADVANCE_OR(return 0);
+    }
+}
+
+static struct node *
+trie_find_sv(pTHX_ struct node *node, SV *sv) {
+    unsigned char c, offset;
+    const U8 *s;
+    STRLEN len;
+
+    s = (const U8 *) SvPVutf8(sv, len);
+
+    for (;;) {
+        if (len == 0)
+            return node;
+        ADVANCE_OR(croak("BUG: can't find node"));
     }
 }
 
@@ -178,7 +201,39 @@ trie_has_unicode(const struct node *node) {
     return 0;
 }
 
-static struct trie *shrink_bigtrie(const struct bignode *root) {
+static void add_fallback_fail_pointers(struct node *root, struct node *node) {
+    unsigned int i;
+    if (!node->fail)
+        node->fail = root;
+    for (i = 0;  i < node->size;  i++)
+        if (node->next[i])
+            add_fallback_fail_pointers(root, node->next[i]);
+}
+
+static void add_fail_pointers(pTHX_ struct node *root, AV *onfail) {
+    I32 i;
+    I32 n = av_len(onfail);
+
+    if (!(n % 2))
+        croak("Invalid onfail list");
+
+    for (i = 0;  i <= n;  i += 2) {
+        SV **key = av_fetch(onfail, i,   0);
+        SV **val = av_fetch(onfail, i+1, 0);
+        struct node *key_node, *val_node;
+        if (!key || !SvOK(*key) || !val || !SvOK(*val))
+            croak("Undefined element in onfail list");
+        key_node = trie_find_sv(aTHX_ root, *key);
+        val_node = trie_find_sv(aTHX_ root, *val);
+        key_node->fail = val_node;
+    }
+
+    for (i = 0;  i < root->size;  i++)
+        if (root->next[i])
+            add_fallback_fail_pointers(root, root->next[i]);
+}
+
+static struct trie *shrink_bigtrie(pTHX_ const struct bignode *root, AV *onfail) {
     size_t alloc = trie_alloc_size(root) + sizeof(struct trie);
     void *buf, *orig_buf;
     struct trie *trie;
@@ -189,6 +244,7 @@ static struct trie *shrink_bigtrie(const struct bignode *root) {
     trie->buf = orig_buf;       /* so it can be easily freed */
 
     trie->root = shrink_bignode(root, &buf);
+    add_fail_pointers(aTHX_ trie->root, onfail);
 
     trie->has_unicode = trie_has_unicode(trie->root);
     return trie;
@@ -254,21 +310,24 @@ MODULE = Text::Match::FastAlternatives      PACKAGE = Text::Match::FastAlternati
 PROTOTYPES: DISABLE
 
 Text::Match::FastAlternatives
-new(package, ...)
+new_instance(package, keywords, onfail)
     char *package
+    AV *keywords
+    AV *onfail
     PREINIT:
         struct bignode *root;
-        I32 i;
+        I32 i, n;
     CODE:
-        for (i = 1;  i < items;  i++) {
-            SV *sv = ST(i);
-            if (!SvOK(sv))
+        n = av_len(keywords);
+        for (i = 0;  i <= n;  i++) {
+            SV **sv = av_fetch(keywords, i, 0);
+            if (!sv || !SvOK(*sv))
                 croak("Undefined element in %s->new", package);
         }
         Newxz(root, 1, struct bignode);
-        for (i = 1;  i < items;  i++) {
+        for (i = 0;  i <= n;  i++) {
             STRLEN pos, len;
-            SV *sv = ST(i);
+            SV *sv = *av_fetch(keywords, i, 0);
             char *s = SvPVutf8(sv, len);
             struct bignode *node = root;
             for (pos = 0;  pos < len;  pos++) {
@@ -279,7 +338,7 @@ new(package, ...)
             }
             node->final = 1;
         }
-        RETVAL = shrink_bigtrie(root);
+        RETVAL = shrink_bigtrie(aTHX_ root, onfail);
         free_bigtrie(root);
     OUTPUT:
         RETVAL
