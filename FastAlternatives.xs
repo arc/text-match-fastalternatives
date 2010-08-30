@@ -16,15 +16,16 @@ struct node {
     unsigned short size;        /* total "next" pointers (incl static one) */
     unsigned char min;          /* codepoint of next[0] */
     unsigned char final;
-    struct node *fail;
-    struct node *next[1];       /* really a variable-length array */
+    size_t fail;
+    size_t next[1];             /* really a variable-length array */
 };
 
 struct trie {
-    struct node *root;
-    void *buf;
-    int has_unicode;
+    size_t has_unicode;
 };
+
+#define NODE(trie, offset) ((struct node *) ((offset) ? (((U8 *)(trie)) + (offset)) : 0))
+#define ROOTNODE(trie)     NODE(trie, sizeof *trie)
 
 #define BIGNODE_MAX 256
 struct bignode;
@@ -53,6 +54,10 @@ static void *pool_alloc(struct pool *pool, size_t n) {
     return region;
 }
 
+static size_t pool_offset(const struct pool *pool, void *obj) {
+    return ((U8 *)obj) - ((U8 *)pool->buf);
+}
+
 static void
 free_bigtrie(struct bignode *node) {
     unsigned int i;
@@ -67,7 +72,7 @@ free_bigtrie(struct bignode *node) {
     offset = c - node->min;                 \
     if (offset > c || offset >= node->size) \
         NextStartChar;                      \
-    node = node->next[offset];              \
+    node = NODE(trie, node->next[offset]);  \
     if (!node)                              \
         NextStartChar;                      \
     s++;                                    \
@@ -75,8 +80,9 @@ free_bigtrie(struct bignode *node) {
 
 /* "Does any part of TARGET contain any matching substring?" */
 static int
-trie_match(const struct node *root, const U8 *s, STRLEN len) {
+trie_match(const struct trie *trie, const U8 *s, STRLEN len) {
     unsigned char c;
+    const struct node *root = ROOTNODE(trie);
     const struct node *next, *node = root;
 
     for (;;) {
@@ -89,10 +95,10 @@ trie_match(const struct node *root, const U8 *s, STRLEN len) {
 
         for (;;) {
             next = c < node->min || c - node->min >= node->size ? 0
-                 :       node->next[c - node->min];
+                 :           NODE(trie, node->next[c - node->min]);
             if (next || !node->fail)
                 break;
-            node = node->fail;
+            node = NODE(trie, node->fail);
         }
 
         node = next ? next : root;
@@ -103,8 +109,9 @@ trie_match(const struct node *root, const U8 *s, STRLEN len) {
 
 /* "Does TARGET begin with any matching substring?" */
 static int
-trie_match_anchored(const struct node *node, const U8 *s, STRLEN len) {
+trie_match_anchored(const struct trie *trie, const U8 *s, STRLEN len) {
     unsigned char c, offset;
+    const struct node *node = ROOTNODE(trie);
 
     for (;;) {
         if (node->final)
@@ -117,8 +124,9 @@ trie_match_anchored(const struct node *node, const U8 *s, STRLEN len) {
 
 /* "Is TARGET exactly equal to any matching substring?" */
 static int
-trie_match_exact(const struct node *node, const U8 *s, STRLEN len) {
+trie_match_exact(const struct trie *trie, const U8 *s, STRLEN len) {
     unsigned char c, offset;
+    const struct node *node = ROOTNODE(trie);
 
     for (;;) {
         if (len == 0)
@@ -128,10 +136,11 @@ trie_match_exact(const struct node *node, const U8 *s, STRLEN len) {
 }
 
 static struct node *
-trie_find_sv(pTHX_ struct node *node, SV *sv) {
+trie_find_sv(pTHX_ struct trie *trie, SV *sv) {
     unsigned char c, offset;
     const U8 *s;
     STRLEN len;
+    struct node *node = ROOTNODE(trie);
 
     s = (const U8 *) SvPVutf8(sv, len);
 
@@ -171,7 +180,7 @@ static size_t trie_alloc_size(const struct bignode *node) {
     bignode_dimensions(node, &min, &size);
 
     /* -1 is because of the statically-allocated member */
-    n += (size - 1) * sizeof(struct node *);
+    n += (size - 1) * sizeof(size_t);
 
     for (i = 0;  i < BIGNODE_MAX;  i++)
         if (node->next[i])
@@ -189,7 +198,7 @@ shrink_bignode(const struct bignode *big, struct pool *pool) {
 
     bignode_dimensions(big, &min, &size);
 
-    node = pool_alloc(pool, sizeof(struct node) + (size-1) * sizeof(struct node *));
+    node = pool_alloc(pool, sizeof(struct node) + (size-1) * sizeof(size_t));
 
     node->final = big->final;
     node->min = min;
@@ -197,34 +206,38 @@ shrink_bignode(const struct bignode *big, struct pool *pool) {
 
     for (i = min;  i < BIGNODE_MAX;  i++)
         if (big->next[i])
-            node->next[i - min] = shrink_bignode(big->next[i], pool);
+            node->next[i - min] = pool_offset(pool, shrink_bignode(big->next[i], pool));
 
     return node;
 }
 
 static int
-trie_has_unicode(const struct node *node) {
-    unsigned int i;
-    if (node->min + node->size > 0x7F)
-        return 1;
-    for (i = 0;  i < node->size;  i++)
-        if (node->next[i] && trie_has_unicode(node->next[i]))
+bigtrie_has_unicode(const struct bignode *node) {
+    unsigned i;
+    /* XXX: In principle, we ought to be able to do a non-recursive walk of
+     * all the nodes in the buffer of a struct trie */
+    for (i = 0x80u;  i < BIGNODE_MAX;  i++)
+        if (node->next[i])
+            return 1;
+    for (i = 0u;  i < 0x80u;  i++)
+        if (node->next[i] && bigtrie_has_unicode(node->next[i]))
             return 1;
     return 0;
 }
 
-static void add_fallback_fail_pointers(struct node *root, struct node *node) {
+static void add_fallback_fail_pointers(struct trie *trie, const struct pool *pool, struct node *node) {
     unsigned int i;
     if (!node->fail)
-        node->fail = root;
+        node->fail = pool_offset(pool, ROOTNODE(trie));
     for (i = 0;  i < node->size;  i++)
         if (node->next[i])
-            add_fallback_fail_pointers(root, node->next[i]);
+            add_fallback_fail_pointers(trie, pool, NODE(trie, node->next[i]));
 }
 
-static void add_fail_pointers(pTHX_ struct node *root, AV *onfail) {
+static void add_fail_pointers(pTHX_ struct trie *trie, const struct pool *pool, AV *onfail) {
     I32 i;
     I32 n = av_len(onfail);
+    struct node *root = ROOTNODE(trie);
 
     if (!(n % 2))
         croak("Invalid onfail list");
@@ -235,31 +248,38 @@ static void add_fail_pointers(pTHX_ struct node *root, AV *onfail) {
         struct node *key_node, *val_node;
         if (!key || !SvOK(*key) || !val || !SvOK(*val))
             croak("Undefined element in onfail list");
-        key_node = trie_find_sv(aTHX_ root, *key);
-        val_node = trie_find_sv(aTHX_ root, *val);
-        key_node->fail = val_node;
+        key_node = trie_find_sv(aTHX_ trie, *key);
+        val_node = trie_find_sv(aTHX_ trie, *val);
+        key_node->fail = pool_offset(pool, val_node);
     }
 
     for (i = 0;  i < root->size;  i++)
         if (root->next[i])
-            add_fallback_fail_pointers(root, root->next[i]);
+            add_fallback_fail_pointers(trie, pool, NODE(trie, root->next[i]));
 }
 
-static struct trie *shrink_bigtrie(pTHX_ const struct bignode *root, AV *onfail) {
-    size_t alloc = trie_alloc_size(root) + sizeof(struct trie);
+static struct trie *shrink_bigtrie(pTHX_ const struct bignode *bigroot, AV *onfail) {
+    size_t alloc = trie_alloc_size(bigroot) + sizeof(struct trie);
     struct pool pool = pool_create(alloc);
     struct trie *trie = pool_alloc(&pool, sizeof *trie);
-    trie->buf = pool.buf;
 
-    trie->root = shrink_bignode(root, &pool);
-    add_fail_pointers(aTHX_ trie->root, onfail);
+    /* Note that (a) the `struct trie` itself is allocated at the start of
+     * the pool, and (b) the root is allocated immediately after that.
+     * Property (a) guarantees that ((void *) pool->buf + 0) never points to
+     * a node (so NODE() can safely treat zero as a null pointer).  Property
+     * (b) makes ROOTNODE() easy to write, without having to store a
+     * separate root-node offset. */
 
-    trie->has_unicode = trie_has_unicode(trie->root);
+    shrink_bignode(bigroot, &pool);
+
+    add_fail_pointers(aTHX_ trie, &pool, onfail);
+
+    trie->has_unicode = bigtrie_has_unicode(bigroot);
     return trie;
 }
 
 static void
-trie_dump(const char *prev, I32 prev_len, const struct node *node) {
+trie_dump(const char *prev, I32 prev_len, const struct trie *trie, const struct node *node) {
     unsigned int i;
     unsigned int entries = 0;
     char *state;
@@ -275,7 +295,7 @@ trie_dump(const char *prev, I32 prev_len, const struct node *node) {
     for (i = 0;  i < node->size;  i++)
         if (node->next[i]) {
             int n = sprintf(state + prev_len, "%lc", i + node->min);
-            trie_dump(state, prev_len + n, node->next[i]);
+            trie_dump(state, prev_len + n, trie, NODE(trie, node->next[i]));
         }
     Safefree(state);
 }
@@ -354,8 +374,11 @@ new_instance(package, keywords, onfail)
 void
 DESTROY(trie)
     Text::Match::FastAlternatives trie
+    PREINIT:
+        void *buf;
     CODE:
-        Safefree(trie->buf);
+        buf = trie;
+        Safefree(buf);
 
 int
 match(trie, targetsv)
@@ -369,7 +392,7 @@ match(trie, targetsv)
             croak("Target is not a defined scalar");
     CODE:
         target = GET_TARGET(trie, targetsv, target_len);
-        if (trie_match(trie->root, target, target_len))
+        if (trie_match(trie, target, target_len))
             XSRETURN_YES;
         XSRETURN_NO;
 
@@ -390,7 +413,7 @@ match_at(trie, targetsv, pos)
         if (pos <= (int) target_len) {
             target_len -= pos;
             target += pos;
-            if (trie_match_anchored(trie->root, target, target_len))
+            if (trie_match_anchored(trie, target, target_len))
                 XSRETURN_YES;
         }
         XSRETURN_NO;
@@ -407,7 +430,7 @@ exact_match(trie, targetsv)
             croak("Target is not a defined scalar");
     CODE:
         target = GET_TARGET(trie, targetsv, target_len);
-        if (trie_match_exact(trie->root, target, target_len))
+        if (trie_match_exact(trie, target, target_len))
             XSRETURN_YES;
         XSRETURN_NO;
 
@@ -415,4 +438,4 @@ void
 dump(trie)
     Text::Match::FastAlternatives trie
     CODE:
-        trie_dump("", 0, trie->root);
+        trie_dump("", 0, trie, ROOTNODE(trie));
