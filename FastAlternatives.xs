@@ -16,12 +16,12 @@ struct node {
     unsigned short size;        /* total "next" pointers (incl static one) */
     unsigned char min;          /* codepoint of next[0] */
     unsigned char final;
-    size_t fail;
-    size_t next[1];             /* really a variable-length array */
+    U32 fail;
+    U32 next[1];                /* really a variable-length array */
 };
 
 struct trie {
-    size_t has_unicode;
+    U32 has_unicode;
 };
 
 #define NODE(trie, offset) ((struct node *) ((offset) ? (((U8 *)(trie)) + (offset)) : 0))
@@ -48,13 +48,13 @@ static struct pool pool_create(size_t n) {
     return pool;
 }
 
-static void *pool_alloc(struct pool *pool, size_t n) {
+static void *pool_alloc(struct pool *pool, U32 n) {
     unsigned char *region = pool->curr;
     pool->curr = region + n;
     return region;
 }
 
-static size_t pool_offset(const struct pool *pool, void *obj) {
+static U32 pool_offset(const struct pool *pool, void *obj) {
     return ((U8 *)obj) - ((U8 *)pool->buf);
 }
 
@@ -180,7 +180,7 @@ static size_t trie_alloc_size(const struct bignode *node) {
     bignode_dimensions(node, &min, &size);
 
     /* -1 is because of the statically-allocated member */
-    n += (size - 1) * sizeof(size_t);
+    n += (size - 1) * sizeof(U32);
 
     for (i = 0;  i < BIGNODE_MAX;  i++)
         if (node->next[i])
@@ -198,7 +198,7 @@ shrink_bignode(const struct bignode *big, struct pool *pool) {
 
     bignode_dimensions(big, &min, &size);
 
-    node = pool_alloc(pool, sizeof(struct node) + (size-1) * sizeof(size_t));
+    node = pool_alloc(pool, sizeof(struct node) + (size-1) * sizeof(U32));
 
     node->final = big->final;
     node->min = min;
@@ -260,8 +260,11 @@ static void add_fail_pointers(pTHX_ struct trie *trie, const struct pool *pool, 
 
 static struct trie *shrink_bigtrie(pTHX_ const struct bignode *bigroot, AV *onfail) {
     size_t alloc = trie_alloc_size(bigroot) + sizeof(struct trie);
-    struct pool pool = pool_create(alloc);
-    struct trie *trie = pool_alloc(&pool, sizeof *trie);
+    struct pool pool;
+    struct trie *trie;
+
+    if (sizeof(U32) < sizeof(size_t) && alloc > 0xffffffffuL)
+        return 0;
 
     /* Note that (a) the `struct trie` itself is allocated at the start of
      * the pool, and (b) the root is allocated immediately after that.
@@ -270,6 +273,8 @@ static struct trie *shrink_bigtrie(pTHX_ const struct bignode *bigroot, AV *onfa
      * (b) makes ROOTNODE() easy to write, without having to store a
      * separate root-node offset. */
 
+    pool = pool_create(alloc);
+    trie = pool_alloc(&pool, sizeof *trie);
     shrink_bignode(bigroot, &pool);
 
     add_fail_pointers(aTHX_ trie, &pool, onfail);
@@ -343,6 +348,7 @@ new_instance(package, keywords, onfail)
     AV *keywords
     AV *onfail
     PREINIT:
+        struct trie *trie;
         struct bignode *root;
         I32 i, n;
     CODE:
@@ -366,8 +372,11 @@ new_instance(package, keywords, onfail)
             }
             node->final = 1;
         }
-        RETVAL = shrink_bigtrie(aTHX_ root, onfail);
+        trie = shrink_bigtrie(aTHX_ root, onfail);
         free_bigtrie(root);
+        if (!trie)
+            croak("Sorry, too much data for Text::Match::FastAlternatives");
+        RETVAL = trie;
     OUTPUT:
         RETVAL
 
