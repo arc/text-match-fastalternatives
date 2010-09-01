@@ -13,9 +13,9 @@
 
 struct node;
 struct node {
-    unsigned short size;        /* total "next" pointers (incl static one) */
-    unsigned char min;          /* codepoint of next[0] */
-    unsigned char final;
+    U8 alloc;                   /* number of dynamic entries in node->next[] */
+    U8 min;                     /* codepoint of node->next[0] */
+    U8 final;
     U32 fail;
     U32 next[1];                /* really a variable-length array */
 };
@@ -26,6 +26,9 @@ struct trie {
 
 #define NODE(trie, offset) ((struct node *) ((offset) ? (((U8 *)(trie)) + (offset)) : 0))
 #define ROOTNODE(trie)     NODE(trie, sizeof *trie)
+
+/* This uses "<=" because node->alloc excludes the static edge */
+#define for_each_edge(var, node)  for (var = 0;  var <= node->alloc;  var++) if (node->next[var])
 
 #define BIGNODE_MAX 256
 struct bignode;
@@ -67,15 +70,15 @@ free_bigtrie(struct bignode *node) {
     Safefree(node);
 }
 
-#define ADVANCE_OR(NextStartChar)           \
-    c = *s;                                 \
-    offset = c - node->min;                 \
-    if (offset > c || offset >= node->size) \
-        NextStartChar;                      \
-    node = NODE(trie, node->next[offset]);  \
-    if (!node)                              \
-        NextStartChar;                      \
-    s++;                                    \
+#define ADVANCE_OR(NextStartChar)                       \
+    c = *s;                                             \
+    offset = c - node->min;                             \
+    if (offset > c || offset >= node->alloc + 1)        \
+        NextStartChar;                                  \
+    node = NODE(trie, node->next[offset]);              \
+    if (!node)                                          \
+        NextStartChar;                                  \
+    s++;                                                \
     len--;
 
 /* "Does any part of TARGET contain any matching substring?" */
@@ -94,7 +97,7 @@ trie_match(const struct trie *trie, const U8 *s, STRLEN len) {
         c = *s;
 
         for (;;) {
-            next = c < node->min || c - node->min >= node->size ? 0
+            next = c < node->min || c - node->min >= node->alloc + 1 ? 0
                  :           NODE(trie, node->next[c - node->min]);
             if (next || !node->fail)
                 break;
@@ -201,8 +204,8 @@ shrink_bignode(const struct bignode *big, struct pool *pool) {
     node = pool_alloc(pool, sizeof(struct node) + (size-1) * sizeof(U32));
 
     node->final = big->final;
-    node->min = min;
-    node->size = size;
+    node->min   = min;
+    node->alloc = size - 1;
 
     for (i = min;  i < BIGNODE_MAX;  i++)
         if (big->next[i])
@@ -229,9 +232,8 @@ static void add_fallback_fail_pointers(struct trie *trie, const struct pool *poo
     unsigned int i;
     if (!node->fail)
         node->fail = pool_offset(pool, ROOTNODE(trie));
-    for (i = 0;  i < node->size;  i++)
-        if (node->next[i])
-            add_fallback_fail_pointers(trie, pool, NODE(trie, node->next[i]));
+    for_each_edge(i, node)
+        add_fallback_fail_pointers(trie, pool, NODE(trie, node->next[i]));
 }
 
 static void add_fail_pointers(pTHX_ struct trie *trie, const struct pool *pool, AV *onfail) {
@@ -253,9 +255,8 @@ static void add_fail_pointers(pTHX_ struct trie *trie, const struct pool *pool, 
         key_node->fail = pool_offset(pool, val_node);
     }
 
-    for (i = 0;  i < root->size;  i++)
-        if (root->next[i])
-            add_fallback_fail_pointers(trie, pool, NODE(trie, root->next[i]));
+    for_each_edge(i, root)
+        add_fallback_fail_pointers(trie, pool, NODE(trie, root->next[i]));
 }
 
 static struct trie *shrink_bigtrie(pTHX_ const struct bignode *bigroot, AV *onfail) {
@@ -288,20 +289,18 @@ trie_dump(const char *prev, I32 prev_len, const struct trie *trie, const struct 
     unsigned int i;
     unsigned int entries = 0;
     char *state;
-    for (i = 0;  i < node->size;  i++)
-        if (node->next[i])
-            entries++;
+    for_each_edge(i, node)
+        entries++;
     /* XXX: This relies on the %lc printf format, which only works in C99,
      * so the corresponding method isn't documented at the moment. */
-    printf("[%s]: min=%u[%lc] size=%u final=%u entries=%u\n", prev, node->min,
-           node->min, node->size, node->final, entries);
+    printf("[%s]: min=%u[%lc] alloc=%u final=%u entries=%u\n", prev, node->min,
+           node->min, node->alloc, node->final, entries);
     Newxz(state, prev_len + 3, char);
     strcpy(state, prev);
-    for (i = 0;  i < node->size;  i++)
-        if (node->next[i]) {
-            int n = sprintf(state + prev_len, "%lc", i + node->min);
-            trie_dump(state, prev_len + n, trie, NODE(trie, node->next[i]));
-        }
+    for_each_edge(i, node) {
+        int n = sprintf(state + prev_len, "%lc", i + node->min);
+        trie_dump(state, prev_len + n, trie, NODE(trie, node->next[i]));
+    }
     Safefree(state);
 }
 
