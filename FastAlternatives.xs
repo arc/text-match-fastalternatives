@@ -15,8 +15,7 @@ struct node;
 struct node {
     U8 alloc;                   /* number of dynamic entries in node->next[] */
     U8 min;                     /* codepoint of node->next[0] */
-    U8 final;
-    U32 fail;
+    U32 ff;                     /* fail pointer; low bit implies node->final */
     U32 next[1];                /* really a variable-length array */
 };
 
@@ -26,6 +25,9 @@ struct trie {
 
 #define NODE(trie, offset) ((struct node *) ((offset) ? (((U8 *)(trie)) + (offset)) : 0))
 #define ROOTNODE(trie)     NODE(trie, sizeof *trie)
+
+#define NODE_FAIL(node)    ((node)->ff & ~1u)
+#define NODE_FINAL(node)   ((node)->ff &  1u)
 
 /* This uses "<=" because node->alloc excludes the static edge */
 #define for_each_edge(var, node)  for (var = 0;  var <= node->alloc;  var++) if (node->next[var])
@@ -89,7 +91,7 @@ trie_match(const struct trie *trie, const U8 *s, STRLEN len) {
     const struct node *next, *node = root;
 
     for (;;) {
-        if (node->final)
+        if (NODE_FINAL(node))
             return 1;
         if (len == 0)
             return 0;
@@ -99,9 +101,9 @@ trie_match(const struct trie *trie, const U8 *s, STRLEN len) {
         for (;;) {
             next = c < node->min || c - node->min >= node->alloc + 1 ? 0
                  :           NODE(trie, node->next[c - node->min]);
-            if (next || !node->fail)
+            if (next || !NODE_FAIL(node))
                 break;
-            node = NODE(trie, node->fail);
+            node = NODE(trie, NODE_FAIL(node));
         }
 
         node = next ? next : root;
@@ -117,7 +119,7 @@ trie_match_anchored(const struct trie *trie, const U8 *s, STRLEN len) {
     const struct node *node = ROOTNODE(trie);
 
     for (;;) {
-        if (node->final)
+        if (NODE_FINAL(node))
             return 1;
         if (len == 0)
             return 0;
@@ -133,7 +135,7 @@ trie_match_exact(const struct trie *trie, const U8 *s, STRLEN len) {
 
     for (;;) {
         if (len == 0)
-            return node->final;
+            return NODE_FINAL(node);
         ADVANCE_OR(return 0);
     }
 }
@@ -203,7 +205,7 @@ shrink_bignode(const struct bignode *big, struct pool *pool) {
 
     node = pool_alloc(pool, sizeof(struct node) + (size-1) * sizeof(U32));
 
-    node->final = big->final;
+    node->ff    = big->final ? 1u : 0u;
     node->min   = min;
     node->alloc = size - 1;
 
@@ -230,8 +232,8 @@ bigtrie_has_unicode(const struct bignode *node) {
 
 static void add_fallback_fail_pointers(struct trie *trie, const struct pool *pool, struct node *node) {
     unsigned int i;
-    if (!node->fail)
-        node->fail = pool_offset(pool, ROOTNODE(trie));
+    if (!NODE_FAIL(node))
+        node->ff |= pool_offset(pool, ROOTNODE(trie));
     for_each_edge(i, node)
         add_fallback_fail_pointers(trie, pool, NODE(trie, node->next[i]));
 }
@@ -252,7 +254,7 @@ static void add_fail_pointers(pTHX_ struct trie *trie, const struct pool *pool, 
             croak("Undefined element in onfail list");
         key_node = trie_find_sv(aTHX_ trie, *key);
         val_node = trie_find_sv(aTHX_ trie, *val);
-        key_node->fail = pool_offset(pool, val_node);
+        key_node->ff |= pool_offset(pool, val_node);
     }
 
     for_each_edge(i, root)
@@ -294,7 +296,7 @@ trie_dump(const char *prev, I32 prev_len, const struct trie *trie, const struct 
     /* XXX: This relies on the %lc printf format, which only works in C99,
      * so the corresponding method isn't documented at the moment. */
     printf("[%s]: min=%u[%lc] alloc=%u final=%u entries=%u\n", prev, node->min,
-           node->min, node->alloc, node->final, entries);
+           node->min, node->alloc, NODE_FINAL(node), entries);
     Newxz(state, prev_len + 3, char);
     strcpy(state, prev);
     for_each_edge(i, node) {
