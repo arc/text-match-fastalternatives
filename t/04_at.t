@@ -6,10 +6,8 @@ use warnings;
 use Test::More;
 
 BEGIN {
-    if ($] >= 5.008) {
-        binmode Test::More->builder->output,         ':utf8';
-        binmode Test::More->builder->failure_output, ':utf8';
-    }
+    binmode Test::More->builder->output,         ':utf8';
+    binmode Test::More->builder->failure_output, ':utf8';
 }
 
 my $alphabet = join '', map { chr } 32 .. 126;
