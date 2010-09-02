@@ -5,17 +5,33 @@
 #define PTR   PASTE(U, BITS)
 
 struct NM(node) {
+#if BITS == 32
+    U16 alloc;
+    U8 min;
+    U8 final;
+    PTR fail;
+#else
     U8 alloc;                   /* number of dynamic entries in node->next[] */
     U8 min;                     /* codepoint of node->next[0] */
     PTR ff;                     /* fail pointer; low bit implies node->final */
+#endif
     PTR next[1];                /* really a variable-length array */
 };
 
 #define NODE(trie, offset) ((struct NM(node) *) ((offset) ? (((U8 *)(trie)) + (offset)) : 0))
 #define ROOTNODE(trie)     NODE(trie, sizeof *trie)
 
-#define NODE_FAIL(node)    ((node)->ff & ~1u)
-#define NODE_FINAL(node)   ((node)->ff &  1u)
+#if BITS == 32
+#define NODE_FAIL(node)           ((node)->fail)
+#define NODE_FINAL(node)          ((node)->final)
+#define NODE_SET_FAIL(node, val)  ((node)->fail = (val))
+#define NODE_SET_FINAL(node, val) ((node)->final = (val))
+#else
+#define NODE_FAIL(node)           ((node)->ff & ~1u)
+#define NODE_FINAL(node)          ((node)->ff &  1u)
+#define NODE_SET_FAIL(node, val)  ((node)->ff |= (val))
+#define NODE_SET_FINAL(node, val) ((node)->ff  = (val) ? 1u : 0u)
+#endif
 
 /* This uses "<=" because node->alloc excludes the static edge */
 #define for_each_edge(var, node)  for (var = 0;  var <= node->alloc;  var++) if (node->next[var])
@@ -134,7 +150,7 @@ NM(shrink_bignode)(const struct bignode *big, struct pool *pool) {
 
     node = pool_alloc(pool, sizeof(struct NM(node)) + (size-1) * sizeof(PTR));
 
-    node->ff    = big->final ? 1u : 0u;
+    NODE_SET_FINAL(node, big->final);
     node->min   = min;
     node->alloc = size - 1;
 
@@ -149,7 +165,7 @@ static void
 NM(add_fallback_fail_pointers)(struct trie *trie, const struct pool *pool, struct NM(node) *node) {
     unsigned int i;
     if (!NODE_FAIL(node))
-        node->ff |= pool_offset(pool, ROOTNODE(trie));
+        NODE_SET_FAIL(node, pool_offset(pool, ROOTNODE(trie)));
     for_each_edge(i, node)
         NM(add_fallback_fail_pointers)(trie, pool, NODE(trie, node->next[i]));
 }
@@ -171,7 +187,7 @@ NM(add_fail_pointers)(pTHX_ struct trie *trie, const struct pool *pool, AV *onfa
             croak("Undefined element in onfail list");
         key_node = NM(trie_find_sv)(aTHX_ trie, *key);
         val_node = NM(trie_find_sv)(aTHX_ trie, *val);
-        key_node->ff |= pool_offset(pool, val_node);
+        NODE_SET_FAIL(key_node, pool_offset(pool, val_node));
     }
 
     for_each_edge(i, root)
@@ -240,5 +256,7 @@ NM(trie_dump)(const char *prev, I32 prev_len, const struct trie *trie, const str
 #undef ROOTNODE
 #undef NODE_FAIL
 #undef NODE_FINAL
+#undef NODE_SET_FAIL
+#undef NODE_SET_FINAL
 #undef for_each_edge
 #undef ADVANCE_OR
