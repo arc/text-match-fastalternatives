@@ -39,6 +39,11 @@ static struct pool pool_create(size_t n) {
 
 static void *pool_alloc(struct pool *pool, size_t n) {
     unsigned char *region = pool->curr;
+    /* Ensure every allocation is on an even boundary, thus freeing up the
+     * low-order bit of a pseudo-pointer for other purposes, even when each
+     * pseudo-pointer is only 8 bits */
+    if ((n & 1u))
+        n++;
     pool->curr = region + n;
     return region;
 }
@@ -58,10 +63,16 @@ static int  bigtrie_has_unicode(const struct bignode *);
 #define LIM  0xfffeu
 #include "trie.c"
 
+#define BITS 8
+#define LIM  0xfeu
+#include "trie.c"
+
 #define NM_(x, y) x ## _ ## y
 #define NM(name, bits) NM_(name, bits)
 #define CALL(trie, name, arglist) \
-    (((trie)->bits == 16 ? (NM(name, 16)arglist) : (NM(name, 32)arglist)))
+    ( ((trie)->bits ==  8 ? (NM(name,  8)arglist) \
+    : ((trie)->bits == 16 ? (NM(name, 16)arglist) \
+    :                       (NM(name, 32)arglist))))
 
 static void
 free_bigtrie(struct bignode *node) {
@@ -173,7 +184,9 @@ new_instance(package, keywords, onfail)
             }
             node->final = 1;
         }
-        trie = shrink_bigtrie_16(aTHX_ root, onfail);
+        trie = shrink_bigtrie_8(aTHX_ root, onfail);
+        if (!trie)
+            trie = shrink_bigtrie_16(aTHX_ root, onfail);
         if (!trie)
             trie = shrink_bigtrie_32(aTHX_ root, onfail);
         free_bigtrie(root);

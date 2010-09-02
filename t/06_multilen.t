@@ -3,7 +3,7 @@
 use strict;
 use warnings;
 
-use Test::More tests => 8;
+use Test::More tests => 12;
 use Text::Match::FastAlternatives;
 
 my @user_agents = read_lines('t/data/user_agents.txt');
@@ -21,9 +21,17 @@ my @user_agents = read_lines('t/data/user_agents.txt');
 }
 
 {
-    my $tmfa = new_ok('Text::Match::FastAlternatives', [$user_agents[0]], 'small object');
-    is($tmfa->pointer_length, 16, '... with 16-bit pointers');
+    my $tmfa = new_ok('Text::Match::FastAlternatives', [$user_agents[0]], 'tiny object');
+    is($tmfa->pointer_length, 8, '... with 8-bit pointers');
     ok($tmfa->match("..$user_agents[0].."), '... and finds a match');
+    ok(!$tmfa->match(''), q[... and doesn't find a non-match]);
+}
+
+{
+    my @partial = @user_agents[0, 1];
+    my $tmfa = new_ok('Text::Match::FastAlternatives', \@partial, 'small object');
+    is($tmfa->pointer_length, 16, '... with 16-bit pointers');
+    ok($tmfa->match("..$partial[0].."), '... and finds a match');
     ok(!$tmfa->match(''), q[... and doesn't find a non-match]);
 }
 
