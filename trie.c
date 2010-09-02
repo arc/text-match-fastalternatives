@@ -6,12 +6,12 @@
 
 struct NM(node) {
 #if BITS == 32
-    U16 alloc;
+    U16 size;
     U8 min;
     U8 final;
     PTR fail;
 #else
-    U8 alloc;                   /* number of dynamic entries in node->next[] */
+    U8 size;                    /* number of entries in node->next[] (incl static) */
     U8 min;                     /* codepoint of node->next[0] */
     PTR ff;                     /* fail pointer; low bit implies node->final */
 #endif
@@ -33,13 +33,12 @@ struct NM(node) {
 #define NODE_SET_FINAL(node, val) ((node)->ff  = (val) ? 1u : 0u)
 #endif
 
-/* This uses "<=" because node->alloc excludes the static edge */
-#define for_each_edge(var, node)  for (var = 0;  var <= node->alloc;  var++) if (node->next[var])
+#define for_each_edge(var, node)  for (var = 0; var < node->size; var++) if (node->next[var])
 
 #define ADVANCE_OR(NextStartChar)                       \
     c = *s;                                             \
     offset = c - node->min;                             \
-    if (offset > c || offset >= node->alloc + 1)        \
+    if (offset > c || offset >= node->size)             \
         NextStartChar;                                  \
     node = NODE(trie, node->next[offset]);              \
     if (!node)                                          \
@@ -63,7 +62,7 @@ NM(trie_match)(const struct trie *trie, const U8 *s, STRLEN len) {
         c = *s;
 
         for (;;) {
-            next = c < node->min || c - node->min >= node->alloc + 1 ? 0
+            next = c < node->min || c - node->min >= node->size ? 0
                  :           NODE(trie, node->next[c - node->min]);
             if (next || !NODE_FAIL(node))
                 break;
@@ -151,8 +150,8 @@ NM(shrink_bignode)(const struct bignode *big, struct pool *pool) {
     node = pool_alloc(pool, sizeof(struct NM(node)) + (size-1) * sizeof(PTR));
 
     NODE_SET_FINAL(node, big->final);
-    node->min   = min;
-    node->alloc = size - 1;
+    node->min  = min;
+    node->size = size;
 
     for (i = min;  i < BIGNODE_MAX;  i++)
         if (big->next[i])
@@ -232,8 +231,8 @@ NM(trie_dump)(const char *prev, I32 prev_len, const struct trie *trie, const str
         entries++;
     /* XXX: This relies on the %lc printf format, which only works in C99,
      * so the corresponding method isn't documented at the moment. */
-    printf("[%s]: min=0x%02X[%lc] alloc=%u final=%u entries=%u\n", prev, node->min,
-           node->min, node->alloc, NODE_FINAL(node), entries);
+    printf("[%s]: min=0x%02X[%lc] size=%u final=%u entries=%u\n", prev, node->min,
+           node->min, node->size, NODE_FINAL(node), entries);
     Newxz(state, prev_len + 3, char);
     strcpy(state, prev);
     for_each_edge(i, node) {

@@ -3,7 +3,7 @@
 use strict;
 use warnings;
 
-use Test::More tests => 50;
+use Test::More tests => 55;
 
 use_ok('Text::Match::FastAlternatives');
 
@@ -26,6 +26,13 @@ ok($ab_tmfa->match($alphabet), 'alphabet contains alphabet');
 ok($ab_tmfa->match(" $alphabet"), 'left-padded alphabet contains alphabet');
 ok($ab_tmfa->match("$alphabet "), 'right-padded alphabet contains alphabet');
 ok($ab_tmfa->match(" $alphabet "), 'both-padded alphabet contains alphabet');
+
+my $path_tmfa = Text::Match::FastAlternatives->new("\x00", "\xFF");
+ok(!$path_tmfa->match(''), q[empty string doesn't contain U+00 or U+FF]);
+ok($path_tmfa->match("\x00"), q[U+00 contains U+00 or U+FF]);
+ok($path_tmfa->match("\xFF"), q[U+FF contains U+00 or U+FF]);
+ok($path_tmfa->match(" \x00"), q[left-padded U+00 contains U+00 or U+FF]);
+ok($path_tmfa->match("\xFF "), q[right-padded U+FF contains U+00 or U+FF]);
 
 my $empty_tmfa = Text::Match::FastAlternatives->new('');
 ok($empty_tmfa->match(''), 'empty string contains empty string');

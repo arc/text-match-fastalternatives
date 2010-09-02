@@ -4,6 +4,7 @@ use strict;
 use warnings;
 
 use Test::More;
+use Encode qw<_utf8_on>;
 
 BEGIN {
     binmode Test::More->builder->output,         ':utf8';
@@ -13,7 +14,7 @@ BEGIN {
 my @cities = read_lines('t/data/cities.txt');
 my @yapc   = read_lines('t/data/yapc.txt');
 
-plan tests => 1 + 2 * @cities;
+plan tests => 2 + 2 * @cities;
 
 use_ok('Text::Match::FastAlternatives');
 
@@ -31,6 +32,14 @@ for my $line (@cities) {
     my $match_rx_i   = $line =~ $rx_i;
     ok($match_tmfa_i && $match_rx_i || !$match_tmfa_i && !$match_rx_i,
         "same case-insensitive result for '$line'");
+}
+
+{
+    my $str = "\xFF";
+    _utf8_on($str);
+    my $tmfa = eval { Text::Match::FastAlternatives->new($str) };
+    my $exn = $@;
+    ok(!defined $tmfa, "Can't create object for malformed 0xFF byte");
 }
 
 sub build_regex {

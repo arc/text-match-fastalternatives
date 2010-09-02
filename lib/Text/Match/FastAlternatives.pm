@@ -16,6 +16,8 @@ sub new {
     for my $str (@keywords) {
         Carp::croak("Undefined element in ", __PACKAGE__, "->new")
             if !defined $str;
+        Carp::croak("Malformed UTF-8 in ", __PACKAGE__, "->new")
+            if !utf8::valid($str);
         my $s = $str;
         for (;;) {
             $known_prefix{$s} = 1;
