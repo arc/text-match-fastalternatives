@@ -12,6 +12,7 @@ t/02_large.t
 t/03_exact.t
 t/04_at.t
 t/05_unicode.t
+t/06_multilen.t
 t/98_pod.t
 t/99_pod_coverage.t
 t/data/README

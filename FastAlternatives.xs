@@ -12,7 +12,8 @@
 #endif
 
 struct trie {
-    U32 has_unicode;
+    U16 bits;
+    U16 has_unicode;
 };
 
 #define BIGNODE_MAX 256
@@ -52,6 +53,15 @@ static int  bigtrie_has_unicode(const struct bignode *);
 #define BITS 32
 #define LIM  0xfffffffeuL
 #include "trie.c"
+
+#define BITS 16
+#define LIM  0xfffeu
+#include "trie.c"
+
+#define NM_(x, y) x ## _ ## y
+#define NM(name, bits) NM_(name, bits)
+#define CALL(trie, name, arglist) \
+    (((trie)->bits == 16 ? (NM(name, 16)arglist) : (NM(name, 32)arglist)))
 
 static void
 free_bigtrie(struct bignode *node) {
@@ -163,7 +173,9 @@ new_instance(package, keywords, onfail)
             }
             node->final = 1;
         }
-        trie = shrink_bigtrie_32(aTHX_ root, onfail);
+        trie = shrink_bigtrie_16(aTHX_ root, onfail);
+        if (!trie)
+            trie = shrink_bigtrie_32(aTHX_ root, onfail);
         free_bigtrie(root);
         if (!trie)
             croak("Sorry, too much data for Text::Match::FastAlternatives");
@@ -192,7 +204,7 @@ match(trie, targetsv)
             croak("Target is not a defined scalar");
     CODE:
         target = GET_TARGET(trie, targetsv, target_len);
-        if (trie_match_32(trie, target, target_len))
+        if (CALL(trie, trie_match,(trie, target, target_len)))
             XSRETURN_YES;
         XSRETURN_NO;
 
@@ -213,7 +225,7 @@ match_at(trie, targetsv, pos)
         if (pos <= (int) target_len) {
             target_len -= pos;
             target += pos;
-            if (trie_match_anchored_32(trie, target, target_len))
+            if (CALL(trie, trie_match_anchored,(trie, target, target_len)))
                 XSRETURN_YES;
         }
         XSRETURN_NO;
@@ -230,12 +242,22 @@ exact_match(trie, targetsv)
             croak("Target is not a defined scalar");
     CODE:
         target = GET_TARGET(trie, targetsv, target_len);
-        if (trie_match_exact_32(trie, target, target_len))
+        if (CALL(trie, trie_match_exact,(trie, target, target_len)))
             XSRETURN_YES;
         XSRETURN_NO;
+
+int
+pointer_length(trie)
+    Text::Match::FastAlternatives trie
+    CODE:
+        /* This is not part of the public API; it merely exposes an
+         * implementation detail for testing */
+        RETVAL = trie->bits;
+    OUTPUT:
+        RETVAL
 
 void
 dump(trie)
     Text::Match::FastAlternatives trie
     CODE:
-        trie_dump_32("", 0, trie, 0);
+        CALL(trie, trie_dump,("", 0, trie, 0));

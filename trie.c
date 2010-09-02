@@ -184,7 +184,7 @@ NM(shrink_bigtrie)(pTHX_ const struct bignode *bigroot, AV *onfail) {
     struct pool pool;
     struct trie *trie;
 
-    if (sizeof(PTR) < sizeof(size_t) && alloc > LIM)
+    if (alloc > LIM)
         return 0;
 
     /* Note that (a) the `struct trie` itself is allocated at the start of
@@ -196,6 +196,7 @@ NM(shrink_bigtrie)(pTHX_ const struct bignode *bigroot, AV *onfail) {
 
     pool = pool_create(alloc);
     trie = pool_alloc(&pool, sizeof *trie);
+    trie->bits = BITS;
     NM(shrink_bignode)(bigroot, &pool);
 
     NM(add_fail_pointers)(aTHX_ trie, &pool, onfail);
