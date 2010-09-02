@@ -232,7 +232,7 @@ NM(trie_dump)(const char *prev, I32 prev_len, const struct trie *trie, const str
         entries++;
     /* XXX: This relies on the %lc printf format, which only works in C99,
      * so the corresponding method isn't documented at the moment. */
-    printf("[%s]: min=0x%u[%lc] alloc=%u final=%u entries=%u\n", prev, node->min,
+    printf("[%s]: min=0x%02X[%lc] alloc=%u final=%u entries=%u\n", prev, node->min,
            node->min, node->alloc, NODE_FINAL(node), entries);
     Newxz(state, prev_len + 3, char);
     strcpy(state, prev);
