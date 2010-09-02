@@ -7,4 +7,7 @@ WriteMakefile(
     ABSTRACT_FROM => $module_file,
     VERSION_FROM  => $module_file,
     OBJECT        => 'FastAlternatives.o',
+    depend => {
+        'FastAlternatives.o' => 'trie.c',
+    },
 );
