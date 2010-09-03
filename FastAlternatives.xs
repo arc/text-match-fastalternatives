@@ -155,13 +155,13 @@ MODULE = Text::Match::FastAlternatives      PACKAGE = Text::Match::FastAlternati
 PROTOTYPES: DISABLE
 
 Text::Match::FastAlternatives
-new_instance(package, keywords, onfail)
+new_instance(package, keywords)
     char *package
     AV *keywords
-    AV *onfail
     PREINIT:
         struct trie *trie;
         struct bignode *root;
+        STRLEN maxlen = 0;
         I32 i, n;
     CODE:
         n = av_len(keywords);
@@ -176,6 +176,8 @@ new_instance(package, keywords, onfail)
             SV *sv = *av_fetch(keywords, i, 0);
             char *s = SvPVutf8(sv, len);
             struct bignode *node = root;
+            if (len > maxlen)
+                maxlen = len;
             for (pos = 0;  pos < len;  pos++) {
                 unsigned char c = s[pos];
                 if (!node->next[c])
@@ -184,11 +186,11 @@ new_instance(package, keywords, onfail)
             }
             node->final = 1;
         }
-        trie = shrink_bigtrie_8(aTHX_ root, onfail);
+        trie = shrink_bigtrie_8(root, maxlen);
         if (!trie)
-            trie = shrink_bigtrie_16(aTHX_ root, onfail);
+            trie = shrink_bigtrie_16(root, maxlen);
         if (!trie)
-            trie = shrink_bigtrie_32(aTHX_ root, onfail);
+            trie = shrink_bigtrie_32(root, maxlen);
         free_bigtrie(root);
         if (!trie)
             croak("Sorry, too much data for Text::Match::FastAlternatives");

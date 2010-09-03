@@ -103,22 +103,6 @@ NM(trie_match_exact)(const struct trie *trie, const U8 *s, STRLEN len) {
     }
 }
 
-static struct NM(node) *
-NM(trie_find_sv)(pTHX_ struct trie *trie, SV *sv) {
-    unsigned char c, offset;
-    const U8 *s;
-    STRLEN len;
-    struct NM(node) *node = ROOTNODE(trie);
-
-    s = (const U8 *) SvPVutf8(sv, len);
-
-    for (;;) {
-        if (len == 0)
-            return node;
-        ADVANCE_OR(croak("BUG: can't find node"));
-    }
-}
-
 static size_t
 NM(trie_alloc_size)(const struct bignode *node) {
     unsigned char min;
@@ -160,44 +144,48 @@ NM(shrink_bignode)(const struct bignode *big, struct pool *pool) {
     return node;
 }
 
-static void
-NM(add_fallback_fail_pointers)(struct trie *trie, const struct pool *pool, struct NM(node) *node) {
-    unsigned int i;
-    if (!NODE_FAIL(node))
-        NODE_SET_FAIL(node, pool_offset(pool, ROOTNODE(trie)));
-    for_each_edge(i, node)
-        NM(add_fallback_fail_pointers)(trie, pool, NODE(trie, node->next[i]));
+/* Finds the longest proper suffix of BUF (whose length is CUR) that
+ * represents the label of a node in TRIE, and returns a pointer to that
+ * node. */
+static struct NM(node) *
+NM(longest_suffix)(const struct trie *trie, const U8 *buf, STRLEN cur) {
+    STRLEN i;
+    for (i = 1;  i <= cur;  i++) {
+        struct NM(node) *node = ROOTNODE(trie);
+        const U8 *s = buf + i;
+        STRLEN len = cur - i;
+        U8 c, offset;
+        for (;;) {
+            ADVANCE_OR(break);
+            if (len == 0)
+                return node;
+        }
+    }
+    return ROOTNODE(trie);
 }
 
 static void
-NM(add_fail_pointers)(pTHX_ struct trie *trie, const struct pool *pool, AV *onfail) {
-    I32 i;
-    I32 n = av_len(onfail);
-    struct NM(node) *root = ROOTNODE(trie);
+NM(add_fail_pointers)(const struct trie *trie, const struct pool *pool,
+                      struct NM(node) *node, U8 *buf, STRLEN cur) {
+    unsigned i;
 
-    if (!(n % 2))
-        croak("Invalid onfail list");
-
-    for (i = 0;  i <= n;  i += 2) {
-        SV **key = av_fetch(onfail, i,   0);
-        SV **val = av_fetch(onfail, i+1, 0);
-        struct NM(node) *key_node, *val_node;
-        if (!key || !SvOK(*key) || !val || !SvOK(*val))
-            croak("Undefined element in onfail list");
-        key_node = NM(trie_find_sv)(aTHX_ trie, *key);
-        val_node = NM(trie_find_sv)(aTHX_ trie, *val);
-        NODE_SET_FAIL(key_node, pool_offset(pool, val_node));
+    if (node != ROOTNODE(trie)) {
+        struct NM(node) *fail = NM(longest_suffix)(trie, buf, cur);
+        NODE_SET_FAIL(node, pool_offset(pool, fail));
     }
-
-    for_each_edge(i, root)
-        NM(add_fallback_fail_pointers)(trie, pool, NODE(trie, root->next[i]));
+    for_each_edge(i, node) {
+        buf[cur] = i + node->min;
+        NM(add_fail_pointers)(trie, pool, NODE(trie, node->next[i]), buf, cur+1);
+    }
+    buf[cur] = 0;
 }
 
 static struct trie *
-NM(shrink_bigtrie)(pTHX_ const struct bignode *bigroot, AV *onfail) {
+NM(shrink_bigtrie)(const struct bignode *bigroot, STRLEN maxlen) {
     size_t alloc = NM(trie_alloc_size)(bigroot) + sizeof(struct trie);
     struct pool pool;
     struct trie *trie;
+    U8 *buf;
 
     if (alloc > LIM)
         return 0;
@@ -214,7 +202,9 @@ NM(shrink_bigtrie)(pTHX_ const struct bignode *bigroot, AV *onfail) {
     trie->bits = BITS;
     NM(shrink_bignode)(bigroot, &pool);
 
-    NM(add_fail_pointers)(aTHX_ trie, &pool, onfail);
+    Newxz(buf, maxlen + 1, U8);
+    NM(add_fail_pointers)(trie, &pool, ROOTNODE(trie), buf, 0);
+    Safefree(buf);
 
     trie->has_unicode = bigtrie_has_unicode(bigroot);
     return trie;

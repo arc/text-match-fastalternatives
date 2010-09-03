@@ -12,31 +12,13 @@ use Carp ();
 
 sub new {
     my ($class, @keywords) = @_;
-    my %known_prefix;
     for my $str (@keywords) {
         Carp::croak("Undefined element in ", __PACKAGE__, "->new")
             if !defined $str;
         Carp::croak("Malformed UTF-8 in ", __PACKAGE__, "->new")
             if !utf8::valid($str);
-        my $s = $str;
-        for (;;) {
-            $known_prefix{$s} = 1;
-            $s =~ s/. \z//xms or last;
-        }
     }
-    my @onfail;
-    for my $str (keys %known_prefix) {
-        my $s = $str;
-        for (;;) {
-            $s =~ s/\A .//xms;
-            last if $s eq '';
-            if ($known_prefix{$s}) {
-                push @onfail, $str, $s;
-                last;
-            }
-        }
-    }
-    return $class->new_instance(\@keywords, \@onfail);
+    return $class->new_instance(\@keywords);
 }
 
 1;
