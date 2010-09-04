@@ -117,6 +117,49 @@ bigtrie_has_unicode(const struct bignode *node) {
     return 0;
 }
 
+static int utf8_valid(const U8 *s, STRLEN len) {
+    static const U8 width[] = { /* start at 0xC2 */
+        2,2,2,2,2,2,2,2,2,2,2,2,2,2,     /* 0xC2 .. 0xCF; two bytes */
+        2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2, /* 0xD0 .. 0xDF; two bytes */
+        3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3, /* 0xE0 .. 0xEF; three bytes */
+        4,4,4,4,4,0,0,0,0,0,0,0,0,0,0,0, /* 0xF0 .. 0xF4; four bytes */
+    };
+    static const U8 mask[] = {  /* data bitmask for leading byte of N-byte unit */
+        0u, 0u, 0x1Fu, 0x0Fu, 7u,
+    };
+    static const U32 min[] = {  /* lowest permissible value for an N-byte unit */
+        0u, 0u, 0x80u, 0x800u, 0x10000u,
+    };
+    const U8 *p = s, *end = s + len;
+    while (p < end) {
+        if (*p < 0x80u)
+            p++;                /* plain ASCII */
+        else if (*p < 0xC2u)
+            return 0;           /* 0x80 .. 0xC1 are impossible leading bytes */
+        else {
+            U8 w = width[*p - 0xC2u], i;
+            U32 c;
+            if (w == 0)
+                return 0;       /* invalid leading byte */
+            else if (end - p < w)
+                return 0;       /* string too short for continuation bytes */
+            c = *p & mask[w];
+            for (i = 1;  i < w;  i++)
+                if ((p[i] & 0xC0u) != 0x80u)
+                    return 0;   /* continuation byte not in range */
+                else
+                    c = (c << 6u) | (p[i] & 0x3Fu);
+            if (c < min[w])
+                return 0;       /* sequence overlong */
+            if (c >= 0xD800u && c < 0xE000u)
+                return 0;       /* UTF-16 surrogate */
+            p += w;
+        }
+    }
+
+    return 1;
+}
+
 static int get_byte_offset(pTHX_ SV *sv, int pos) {
     STRLEN len;
     const unsigned char *s, *p;
@@ -276,3 +319,18 @@ dump(trie)
     Text::Match::FastAlternatives trie
     CODE:
         CALL(trie, trie_dump,("", 0, trie, 0));
+
+int
+utf8_valid(package, sv)
+    char *package
+    SV *sv
+    PREINIT:
+        STRLEN len;
+        char *s;
+    CODE:
+        /* This is not part of the public API; it merely exposes an
+         * implementation detail for testing */
+        s = SvPV(sv, len);
+        RETVAL = utf8_valid(s, len);
+    OUTPUT:
+        RETVAL
