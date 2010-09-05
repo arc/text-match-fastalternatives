@@ -16,13 +16,6 @@ struct trie {
     U16 has_unicode;
 };
 
-#define BIGNODE_MAX 256
-struct bignode;
-struct bignode {
-    unsigned final;
-    struct bignode *next[BIGNODE_MAX]; /* one for every possible byte */
-};
-
 typedef struct trie *Text__Match__FastAlternatives;
 
 struct pool {
@@ -52,19 +45,28 @@ static size_t pool_offset(const struct pool *pool, void *obj) {
     return ((U8 *)obj) - ((U8 *)pool->buf);
 }
 
-static void bignode_dimensions(const struct bignode *, unsigned char *, unsigned short *);
-static int  bigtrie_has_unicode(const struct bignode *);
+static int
+array_has_unicode(pTHX_ AV *keywords) {
+    I32 i, n = av_len(keywords);
+    for (i = 0;  i <= n;  i++) {
+        SV *sv = *av_fetch(keywords, i, 0);
+        STRLEN len;
+        char *s = SvPV(sv, len);
+        const U8 *p = (const U8 *) s, *end = p + len;
+        while (p < end)
+            if (*p++ & 0x80u)
+                return 1;
+    }
+    return 0;
+}
 
 #define BITS 32
-#define LIM  0xfffffffeuL
 #include "trie.c"
 
 #define BITS 16
-#define LIM  0xfffeu
 #include "trie.c"
 
 #define BITS 8
-#define LIM  0xfeu
 #include "trie.c"
 
 #define NM_(x, y) x ## _ ## y
@@ -73,49 +75,6 @@ static int  bigtrie_has_unicode(const struct bignode *);
     ( ((trie)->bits ==  8 ? (NM(name,  8)arglist) \
     : ((trie)->bits == 16 ? (NM(name, 16)arglist) \
     :                       (NM(name, 32)arglist))))
-
-static void
-free_bigtrie(struct bignode *node) {
-    unsigned int i;
-    for (i = 0;  i < BIGNODE_MAX;  i++)
-        if (node->next[i])
-            free_bigtrie(node->next[i]);
-    Safefree(node);
-}
-
-static void
-bignode_dimensions(const struct bignode *node, unsigned char *pmin, unsigned short *psize) {
-    int min = PERL_INT_MAX, max = 0, i;
-
-    for (i = 0;  i < BIGNODE_MAX;  i++) {
-        if (!node->next[i])
-            continue;
-        if (i < min)
-            min = i;
-        if (i > max)
-            max = i;
-    }
-
-    if (min == PERL_INT_MAX)    /* empty node; force min=0, max=0 */
-        min = 0;
-
-    *pmin = min;
-    *psize = max - min + 1;
-}
-
-static int
-bigtrie_has_unicode(const struct bignode *node) {
-    unsigned i;
-    /* XXX: In principle, we ought to be able to do a non-recursive walk of
-     * all the nodes in the buffer of a struct trie */
-    for (i = 0x80u;  i < BIGNODE_MAX;  i++)
-        if (node->next[i])
-            return 1;
-    for (i = 0u;  i < 0x80u;  i++)
-        if (node->next[i] && bigtrie_has_unicode(node->next[i]))
-            return 1;
-    return 0;
-}
 
 static int utf8_valid(const U8 *s, STRLEN len) {
     static const U8 width[] = { /* start at 0xC2 */
@@ -203,40 +162,89 @@ new_instance(package, keywords)
     AV *keywords
     PREINIT:
         struct trie *trie;
-        struct bignode *root;
+        HV *limits;
+        HE *he;
         STRLEN maxlen = 0;
-        I32 i, n;
+        I32 i, n, nodes;
+        size_t dyn_ptrs = 0, odd_arrays = 0;
     CODE:
+        /* Ensure all the arguments are acceptable */
         n = av_len(keywords);
         for (i = 0;  i <= n;  i++) {
             SV **sv = av_fetch(keywords, i, 0);
+            char *s;
+            STRLEN len;
             if (!sv || !SvOK(*sv))
                 croak("Undefined element in %s->new", package);
+            s = SvPVutf8(*sv, len);
+            if (!utf8_valid((const U8 *) s, len))
+                croak("Malformed or non-Unicode UTF-8 in %s->new", package);
+            if (len > maxlen)
+                maxlen = len;
         }
-        Newxz(root, 1, struct bignode);
+
+        /* For each possibly-improper prefix of each keyword, find the
+         * minimum and maximum byte values for edges onwards from the node
+         * which will represent that prefix.  The minimum and maximum are
+         * encoded in a UV (min as the lowest-order byte, max as the next
+         * byte up) and stored in a hash with the prefix as the key. */
+        limits = newHV();
         for (i = 0;  i <= n;  i++) {
             STRLEN pos, len;
             SV *sv = *av_fetch(keywords, i, 0);
             char *s = SvPVutf8(sv, len);
-            struct bignode *node = root;
-            if (len > maxlen)
-                maxlen = len;
-            for (pos = 0;  pos < len;  pos++) {
-                unsigned char c = s[pos];
-                if (!node->next[c])
-                    Newxz(node->next[c], 1, struct bignode);
-                node = node->next[c];
+            for (pos = 0;  pos <= len;  pos++) {
+                U8 c = ((U8 *) s)[pos];
+                SV *entry = *hv_fetch(limits, s, pos, 1);
+                if (!SvIOK(entry)) /* sv_setuv() might give you an IOK-but-not-UOK sv */
+                    sv_setuv(entry, (c << 8u) | c);
+                else {
+                    UV lim = SvUV(entry);
+                    UV min = lim & 0xFFu, max = (lim & 0xFF00u) >> 8u;
+                    if (c < min)
+                        min = c;
+                    else if (c > max)
+                        max = c;
+                    else        /* no change; don't bother doing sv_setuv() */
+                        continue;
+                    sv_setuv(entry, (max << 8u) | min);
+                }
             }
-            node->final = 1;
         }
-        trie = shrink_bigtrie_8(root, maxlen);
+
+        /* Count nodes and dynamically-allocated pointers in limits */
+        nodes = hv_iterinit(limits);
+        while ((he = hv_iternext(limits))) {
+            UV lim = SvUV(HeVAL(he));
+            UV min = lim & 0xFFu, max = (lim & 0xFF00u) >> 8u;
+            UV n = max - min;
+            dyn_ptrs += n;
+            /* For the 8-bit implementation, we'll need to allocate an extra
+             * byte for every node that would otherwise be an odd number of
+             * bytes long */
+            if ((n & 1u))
+                odd_arrays++;
+        }
+
+        /* Ensure we get a root node, even if there are no keywords */
+        if (nodes == 0) {
+            nodes++;
+            hv_store(limits, "", 0, newSVuv(0u), 0);
+        }
+
+        /* Create the trie */
+        if      (trie_data_fits_8( nodes, dyn_ptrs, odd_arrays))
+            trie = trie_create_8( aTHX_ keywords, limits, maxlen, nodes, dyn_ptrs, odd_arrays);
+        else if (trie_data_fits_16(nodes, dyn_ptrs, odd_arrays))
+            trie = trie_create_16(aTHX_ keywords, limits, maxlen, nodes, dyn_ptrs, odd_arrays);
+        else if (trie_data_fits_32(nodes, dyn_ptrs, odd_arrays))
+            trie = trie_create_32(aTHX_ keywords, limits, maxlen, nodes, dyn_ptrs, odd_arrays);
+
+        SvREFCNT_dec(limits);
+
         if (!trie)
-            trie = shrink_bigtrie_16(root, maxlen);
-        if (!trie)
-            trie = shrink_bigtrie_32(root, maxlen);
-        free_bigtrie(root);
-        if (!trie)
-            croak("Sorry, too much data for Text::Match::FastAlternatives");
+            croak("Sorry, too much data for %s", package);
+
         RETVAL = trie;
     OUTPUT:
         RETVAL

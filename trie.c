@@ -104,44 +104,18 @@ NM(trie_match_exact)(const struct trie *trie, const U8 *s, STRLEN len) {
 }
 
 static size_t
-NM(trie_alloc_size)(const struct bignode *node) {
-    unsigned char min;
-    unsigned short size;
-    int i;
-    size_t n = sizeof(struct NM(node));
-
-    bignode_dimensions(node, &min, &size);
-
-    /* -1 is because of the statically-allocated member */
-    n += (size - 1) * sizeof(PTR);
-
-    for (i = 0;  i < BIGNODE_MAX;  i++)
-        if (node->next[i])
-            n += NM(trie_alloc_size)(node->next[i]);
-
-    return n;
+NM(trie_data_size)(I32 nodes, size_t dyn_ptrs, size_t odd_arrays) {
+    size_t size = sizeof(struct trie);
+    size += nodes    * sizeof(struct NM(node));
+    size += dyn_ptrs * sizeof(PTR);
+    if (BITS == 8)
+        size += odd_arrays * sizeof(PTR);
+    return size;
 }
 
-static struct NM(node) *
-NM(shrink_bignode)(const struct bignode *big, struct pool *pool) {
-    struct NM(node) *node;
-    unsigned char min;
-    unsigned short size;
-    int i;
-
-    bignode_dimensions(big, &min, &size);
-
-    node = pool_alloc(pool, sizeof(struct NM(node)) + (size-1) * sizeof(PTR));
-
-    NODE_SET_FINAL(node, big->final);
-    node->min  = min;
-    node->size = size;
-
-    for (i = min;  i < BIGNODE_MAX;  i++)
-        if (big->next[i])
-            node->next[i - min] = pool_offset(pool, NM(shrink_bignode)(big->next[i], pool));
-
-    return node;
+static int
+NM(trie_data_fits)(I32 nodes, size_t dyn_ptrs, size_t odd_arrays) {
+    return NM(trie_data_size)(nodes, dyn_ptrs, odd_arrays) < (PTR) ~((PTR) 0u);
 }
 
 /* Finds the longest proper suffix of BUF (whose length is CUR) that
@@ -180,15 +154,41 @@ NM(add_fail_pointers)(const struct trie *trie, const struct pool *pool,
     buf[cur] = 0;
 }
 
-static struct trie *
-NM(shrink_bigtrie)(const struct bignode *bigroot, STRLEN maxlen) {
-    size_t alloc = NM(trie_alloc_size)(bigroot) + sizeof(struct trie);
-    struct pool pool;
-    struct trie *trie;
-    U8 *buf;
+static struct NM(node) *
+NM(trie_get_node)(pTHX_ HV *limits, struct pool *pool, struct trie *trie,
+                  const char *k, STRLEN len) {
+    SV *lim = *hv_fetch(limits, k, len, 0);
+    if (!(SvUV(lim) & 0x10000u)) {
+        UV mm = SvUV(lim);      /* max and min */
+        U8 min = mm & 0xFFu, max = (mm & 0xFF00u) >> 8u;
+        size_t alloc = sizeof(struct NM(node)) + (max - min) * sizeof(PTR);
+        struct NM(node) *node = pool_alloc(pool, alloc);
+        node->min = min;
+        node->size = max - min + 1;
+        sv_setuv(lim, mm | 0x10000u);
+        return node;
+    }
+    else {
+        struct NM(node) *node = ROOTNODE(trie);
+        const U8 *s = (const U8 *) k;
+        U8 c, offset;
+        for (;;) {
+            ADVANCE_OR(croak("BUG"));
+            if (len == 0)
+                return node;
+        }
+    }
+}
 
-    if (alloc > LIM)
-        return 0;
+static struct trie *
+NM(trie_create)(pTHX_ AV *keywords, HV *limits, STRLEN maxlen,
+                I32 nodes, size_t dyn_ptrs, size_t odd_arrays) {
+    size_t alloc = NM(trie_data_size)(nodes, dyn_ptrs, odd_arrays);
+    struct pool pool = pool_create(alloc);
+    struct trie *trie = pool_alloc(&pool, sizeof *trie);
+    struct NM(node) *root;
+    I32 i, n = av_len(keywords);
+    U8 *buf;
 
     /* Note that (a) the `struct trie` itself is allocated at the start of
      * the pool, and (b) the root is allocated immediately after that.
@@ -197,16 +197,32 @@ NM(shrink_bigtrie)(const struct bignode *bigroot, STRLEN maxlen) {
      * (b) makes ROOTNODE() easy to write, without having to store a
      * separate root-node offset. */
 
-    pool = pool_create(alloc);
-    trie = pool_alloc(&pool, sizeof *trie);
     trie->bits = BITS;
-    NM(shrink_bignode)(bigroot, &pool);
+    trie->has_unicode = array_has_unicode(aTHX_ keywords);
+
+    root = NM(trie_get_node)(aTHX_ limits, &pool, trie, "", 0);
+
+    for (i = 0;  i <= n;  i++) {
+        SV *sv = *av_fetch(keywords, i, 0);
+        STRLEN pos, len;
+        char *s = SvPV(sv, len);
+        const U8 *p = (const U8 *) s;
+        struct NM(node) *prev = root;
+        if (len == 0)
+            NODE_SET_FINAL(root, 1);
+        for (pos = 1;  pos <= len;  pos++) {
+            struct NM(node) *node = NM(trie_get_node)(aTHX_ limits, &pool, trie, s, pos);
+            if (pos == len)
+                NODE_SET_FINAL(node, 1);
+            prev->next[ p[pos - 1] - prev->min ] = pool_offset(&pool, node);
+            prev = node;
+        }
+    }
 
     Newxz(buf, maxlen + 1, U8);
     NM(add_fail_pointers)(trie, &pool, ROOTNODE(trie), buf, 0);
     Safefree(buf);
 
-    trie->has_unicode = bigtrie_has_unicode(bigroot);
     return trie;
 }
 
@@ -234,7 +250,6 @@ NM(trie_dump)(const char *prev, I32 prev_len, const struct trie *trie, const str
 
 
 #undef BITS
-#undef LIM
 
 #undef NM
 #undef PASTE
