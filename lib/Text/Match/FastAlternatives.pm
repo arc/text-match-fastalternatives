@@ -15,8 +15,13 @@ sub new {
     for my $str (@keywords) {
         Carp::croak("Undefined element in ", __PACKAGE__, "->new")
             if !defined $str;
-        Carp::croak("Malformed UTF-8 in ", __PACKAGE__, "->new")
-            if !utf8::valid($str);
+        if (!utf8::valid($str)) {
+            # This suppresses two "malformed UTF-8" warnings that would
+            # otherwise be emitted by Carp when it constructs a message
+            # containing the arguments.
+            local $SIG{__WARN__} = sub {};
+            Carp::croak("Malformed UTF-8 in ", __PACKAGE__, "->new");
+        }
     }
     return $class->new_instance(\@keywords);
 }
