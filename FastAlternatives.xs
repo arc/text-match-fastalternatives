@@ -283,6 +283,7 @@ match(trie, targetsv)
         STRLEN target_len;
         const unsigned char *target;
     INIT:
+        SvGETMAGIC(targetsv);
         if (!SvOK(targetsv))
             croak("Target is not a defined scalar");
     CODE:
@@ -300,6 +301,7 @@ match_at(trie, targetsv, pos)
         STRLEN target_len;
         const unsigned char *target;
     INIT:
+        SvGETMAGIC(targetsv);
         if (!SvOK(targetsv))
             croak("Target is not a defined scalar");
     CODE:
@@ -321,6 +323,7 @@ exact_match(trie, targetsv)
         STRLEN target_len;
         const unsigned char *target;
     INIT:
+        SvGETMAGIC(targetsv);
         if (!SvOK(targetsv))
             croak("Target is not a defined scalar");
     CODE:
