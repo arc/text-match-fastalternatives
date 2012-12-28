@@ -60,6 +60,11 @@ array_has_unicode(pTHX_ AV *keywords) {
     return 0;
 }
 
+#if PTRSIZE >= 8
+#define BITS 64
+#include "trie.c"
+#endif
+
 #define BITS 32
 #include "trie.c"
 
@@ -71,10 +76,18 @@ array_has_unicode(pTHX_ AV *keywords) {
 
 #define NM_(x, y) x ## _ ## y
 #define NM(name, bits) NM_(name, bits)
+#if PTRSIZE >= 8
+#define CALL(trie, name, arglist) \
+    ( ((trie)->bits ==  8 ? (NM(name,  8)arglist) \
+    : ((trie)->bits == 16 ? (NM(name, 16)arglist) \
+    : ((trie)->bits == 32 ? (NM(name, 32)arglist) \
+    :                       (NM(name, 64)arglist)))))
+#else
 #define CALL(trie, name, arglist) \
     ( ((trie)->bits ==  8 ? (NM(name,  8)arglist) \
     : ((trie)->bits == 16 ? (NM(name, 16)arglist) \
     :                       (NM(name, 32)arglist))))
+#endif
 
 static int utf8_valid(const U8 *s, STRLEN len) {
     static const U8 width[] = { /* start at 0xC2 */
@@ -239,6 +252,10 @@ new_instance(package, keywords)
             trie = trie_create_16(aTHX_ keywords, limits, maxlen, nodes, dyn_ptrs, odd_arrays);
         else if (trie_data_fits_32(nodes, dyn_ptrs, odd_arrays))
             trie = trie_create_32(aTHX_ keywords, limits, maxlen, nodes, dyn_ptrs, odd_arrays);
+#if PTRSIZE >= 8
+        else if (trie_data_fits_64(nodes, dyn_ptrs, odd_arrays))
+            trie = trie_create_64(aTHX_ keywords, limits, maxlen, nodes, dyn_ptrs, odd_arrays);
+#endif
 
         SvREFCNT_dec(limits);
 

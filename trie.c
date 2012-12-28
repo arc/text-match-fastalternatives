@@ -2,10 +2,14 @@
 #define PASTE(x, y) PASTE1(x, y)
 #define NM(tok) PASTE(tok, PASTE(_, BITS))
 
+#if BITS == 64                  /* only happens when PTRSIZE >= 8 */
+#define PTR   UV
+#else
 #define PTR   PASTE(U, BITS)
+#endif
 
 struct NM(node) {
-#if BITS == 32
+#if BITS >= 32
     U16 size;
     U8 min;
     U8 final;
@@ -19,9 +23,9 @@ struct NM(node) {
 };
 
 #define NODE(trie, offset) ((struct NM(node) *) ((offset) ? (((U8 *)(trie)) + (offset)) : 0))
-#define ROOTNODE(trie)     NODE(trie, sizeof *trie)
+#define ROOTNODE(trie)     NODE(trie, BITS <= 32 ? sizeof *trie : PTRSIZE)
 
-#if BITS == 32
+#if BITS >= 32
 #define NODE_FAIL(node)           ((node)->fail)
 #define NODE_FINAL(node)          ((node)->final)
 #define NODE_SET_FAIL(node, val)  ((node)->fail = (val))
