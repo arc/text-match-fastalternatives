@@ -100,7 +100,8 @@ Text::Match::FastAlternatives was 21% faster than perl-5.10.0; with 339 keys
 =item Text::Match::FastAlternatives->new(@keys)
 
 Constructs a matcher that can efficiently search for all of the @keys in
-parallel.  Throws an exception if any of the keys are undefined.
+parallel.  Throws an exception if any of the keys are undefined, or any of
+them contain malformed UTF-8.
 
 =item $matcher->match($target)
 
@@ -142,22 +143,27 @@ copy scalar variables before matching them:
 
 =head1 IMPLEMENTATION
 
-Text::Match::FastAlternatives manages to be so fast by using a trie internally.
-The time to find a match at a given position in the string (or determine that
-there is no match) is independent of the number of keys being sought;
-worst-case match time is linear in the length of the longest key.  Since a
-match must be attempted at each position in the target string, total worst-case
-search time is O(I<mn>) where I<m> is the length of the target string and I<n>
-is the length of the longest key.
+Text::Match::FastAlternatives manages to be so fast by using an Aho-Corasick
+automaton internally.  The time to search for a match (or determine that
+there is no match) is independent of the number of keys being sought; total
+worst-case search time is O(I<n>) where I<n> is the length of the target
+string.
 
 The C<match_at> and C<exact_match> methods only need to find a match at one
-position, so they have worst-case running time of O(min(I<n>, I<m>)).
+position, so they have worst-case running time of O(min(I<n>, I<m>)) where
+I<m> is the length of the longest key.
+
+Text::Match::FastAlternatives uses an adaptive technique to minimise memory
+usage; in the best case, each character in a key requires only 4 bytes of
+storage in the automaton.  This low memory usage has the additional
+advantage of reducing contention for CPU cache lines, further improving
+performance.
 
 =head1 SEE ALSO
 
-L<http://en.wikipedia.org/wiki/Trie>, L<Regexp::Trie>, L<Regexp::Optimizer>,
-L<Regexp::Assemble>, L<Unicode::Normalize>, L<perl5100delta>, L<perlunitut>,
-L<perlunifaq>.
+L<http://en.wikipedia.org/wiki/Aho-Corasick_string_matching_algorithm>,
+L<Regexp::Trie>, L<Regexp::Optimizer>, L<Regexp::Assemble>,
+L<Unicode::Normalize>, L<perl5100delta>, L<perlunitut>, L<perlunifaq>.
 
 =head1 AUTHOR
 
@@ -165,7 +171,7 @@ Aaron Crane E<lt>arc@cpan.orgE<gt>
 
 =head1 COPYRIGHT
 
-Copyright 2006, 2007, 2008, 2010 Aaron Crane.
+Copyright 2006, 2007, 2008, 2010, 2012 Aaron Crane.
 
 This library is free software; you can redistribute it and/or modify it under
 the terms of the Artistic License, or (at your option) under the terms of the
