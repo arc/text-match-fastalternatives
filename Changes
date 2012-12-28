@@ -39,3 +39,15 @@ Revision history for Perl extension Text::Match::FastAlternatives
 	- fix bug in match_at on Unicode strings
 	- use XSLoader instead of DynaLoader; lower overhead
 	- fix test suite Unicode bugs under Perl 5.6
+
+1.05  Fri Dec 28 15:24:08 2012
+	- new Aho-Corasick matching algorithm; asymptotic time complexity now
+	  O(n) rather than O(nm)
+	- several subtle speed enhancements
+	- adaptive memory reduction, to help performance even further;
+	  memory use for cases small enough to be processed by a 32-bit CPU
+	  is no bigger when you use a 64-bit Perl, and can now be 4 bytes
+	  per key character (or lower) in some cases
+	- performance and memory-usage improvements during trie construction
+	- bug fix: magical values now correctly supported
+	- Perl 5.6 no longer supported

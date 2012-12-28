@@ -13,6 +13,8 @@ t/03_exact.t
 t/04_at.t
 t/05_unicode.t
 t/06_multilen.t
+t/07_utf8.t
+t/08_magic.t
 t/98_pod.t
 t/99_pod_coverage.t
 t/data/README
